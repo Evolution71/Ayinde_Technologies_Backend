@@ -4,7 +4,7 @@ Seeds starter rows into the database the first time it's empty.
 This is the one place actual content still originates as Python data — but
 the difference from before matters: it's written into the database once,
 and every API response after that comes from a real query against that
-database, not from an in-memory list baked into the route handler. Edit
+database, not from an in-memory list baked into the routes handler. Edit
 these rows through the database (or add an admin endpoint later) and the
 API reflects it immediately — no code changes or redeploys needed.
 """
