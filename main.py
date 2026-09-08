@@ -10,10 +10,15 @@ load_dotenv()
 from database import Base, engine, SessionLocal
 from security import limiter, SecurityHeadersMiddleware
 from seed import seed_if_empty
+from migrate import run_lightweight_migrations
 from routers import auth, services, team, projects, courses, contact, captcha, payments
 
-# Create tables if they don't exist yet, and seed starter data.
+# Create tables if they don't exist yet...
 Base.metadata.create_all(bind=engine)
+# ...then add any columns that models.py has but a pre-existing table
+# (from an earlier deploy) doesn't yet.
+run_lightweight_migrations(engine, Base)
+
 _db = SessionLocal()
 try:
     seed_if_empty(_db)
