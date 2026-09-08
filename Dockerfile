@@ -24,5 +24,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 # Real secrets (SECRET_KEY, DATABASE_URL, FLUTTERWAVE_*, etc.) come from
 # environment variables set in your hosting platform's dashboard — not
 # baked into the image. $PORT is set automatically by most platforms
-# (Railway, Render); falls back to 8000 if unset.
-CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
+# (Railway, Render); falls back to 8000 if unset. Written as an explicit
+# JSON-form CMD (wrapping sh -c ourselves) so Docker still forwards
+# shutdown signals (SIGTERM) straight to uvicorn for clean, fast restarts
+# during redeploys, instead of a shell process sitting in between.
+CMD ["sh", "-c", "exec uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
