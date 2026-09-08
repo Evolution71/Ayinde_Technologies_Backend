@@ -6,6 +6,7 @@ deployment — the fallback below is only so the app doesn't crash the first
 time you run it locally without a .env file. Never rely on the fallback in
 production; tokens signed with a known/default key can be forged.
 """
+
 import os
 import bcrypt
 import jwt

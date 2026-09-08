@@ -10,7 +10,7 @@ load_dotenv()
 from database import Base, engine, SessionLocal
 from security import limiter, SecurityHeadersMiddleware
 from seed import seed_if_empty
-from routers import auth, services, team, projects, courses, contact, captcha
+from routers import auth, services, team, projects, courses, contact, captcha, payments
 
 # Create tables if they don't exist yet, and seed starter data.
 Base.metadata.create_all(bind=engine)
@@ -49,6 +49,7 @@ app.include_router(projects.router)
 app.include_router(courses.router)
 app.include_router(contact.router)
 app.include_router(captcha.router)
+app.include_router(payments.router)
 
 
 @app.get("/")

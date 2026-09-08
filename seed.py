@@ -4,7 +4,7 @@ Seeds starter rows into the database the first time it's empty.
 This is the one place actual content still originates as Python data — but
 the difference from before matters: it's written into the database once,
 and every API response after that comes from a real query against that
-database, not from an in-memory list baked into the routes handler. Edit
+database, not from an in-memory list baked into the route handler. Edit
 these rows through the database (or add an admin endpoint later) and the
 API reflects it immediately — no code changes or redeploys needed.
 """
@@ -45,15 +45,18 @@ def seed_if_empty(db: Session):
 
     if db.query(models.TeamMember).count() == 0:
         team = [
-            dict(name="Ayinde Oladele", role="Founder & Tech Lead",
-                 bio="Visionary leader with 10+ years in technology innovation and AI implementation",
-                 image="👨‍💼", expertise="AI Architecture,Strategic Planning,Business Development"),
-            dict(name="Tech Specialist", role="Senior Developer",
-                 bio="Expert in full-stack development and cloud infrastructure",
-                 image="👨‍💻", expertise="Backend Development,Cloud Services,System Design"),
+            dict(name="Albert A. D. Cabrera", role="Founder & CEO",
+                 bio="Founder and CEO of Ayinde Technologies Limited, leading strategy and client partnerships.",
+                 image="👨‍💼", expertise="Strategic Planning,Business Development,Client Partnerships",
+                 email="support@ayindetechnologies.com", phone="949-520-8178"),
+            dict(name="Ezuma Festus", role="Tech Lead",
+                 bio="Tech Lead at Ayinde Technologies, overseeing build quality and implementation.",
+                 image="👨‍💻", expertise="Backend Development,System Architecture,AI Implementation",
+                 email="support@ayindetechnologies.com", phone=None),
             dict(name="AI Consultant", role="ML Engineer",
                  bio="Specialized in implementing machine learning solutions for enterprises",
-                 image="👨‍🔬", expertise="Machine Learning,Data Science,AI Solutions"),
+                 image="👨‍🔬", expertise="Machine Learning,Data Science,AI Solutions",
+                 email=None, phone=None),
         ]
         db.bulk_save_objects([models.TeamMember(**t) for t in team])
 
@@ -81,13 +84,13 @@ def seed_if_empty(db: Session):
     if db.query(models.Course).count() == 0:
         courses = [
             dict(title="Programming Foundations", description="Start from zero — variables, logic, and your first working programs.",
-                 level="Beginner", duration="4 weeks", icon="🧩"),
+                 level="Beginner", duration="4 weeks", icon="🧩", price=10000.0, currency="NGN"),
             dict(title="Applied Data Skills", description="Clean, query, and analyze real data sets using Python.",
-                 level="Intermediate", duration="6 weeks", icon="📊"),
+                 level="Intermediate", duration="6 weeks", icon="📊", price=15000.0, currency="NGN"),
             dict(title="Building AI-Powered Apps", description="Ship a real AI-backed feature or product from scratch.",
-                 level="Advanced", duration="8 weeks", icon="🤖"),
+                 level="Advanced", duration="8 weeks", icon="🤖", price=25000.0, currency="NGN"),
             dict(title="1:1 Deep-Dive Tutoring", description="Targeted sessions on exactly the gaps you name.",
-                 level="All levels", duration="Ongoing", icon="🎯"),
+                 level="All levels", duration="Ongoing", icon="🎯", price=20000.0, currency="NGN"),
         ]
         db.bulk_save_objects([models.Course(**c) for c in courses])
 

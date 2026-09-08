@@ -7,7 +7,7 @@ but from then on it's ordinary database data you can edit like any other.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -44,6 +44,8 @@ class TeamMember(Base):
     bio = Column(Text, nullable=False)
     image = Column(String, nullable=False)
     expertise = Column(Text, nullable=False)  # comma-separated
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
 
 
 class Project(Base):
@@ -77,6 +79,8 @@ class Course(Base):
     level = Column(String, nullable=False)  # Beginner / Intermediate / Advanced
     duration = Column(String, nullable=False)
     icon = Column(String, nullable=False)
+    price = Column(Float, default=15000.0)  # monthly price after the free trial
+    currency = Column(String, default="NGN")
 
     enrollments = relationship("Enrollment", back_populates="course")
 
@@ -89,8 +93,31 @@ class Enrollment(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     enrolled_at = Column(DateTime, default=datetime.utcnow)
 
+    # Every enrollment starts with a free trial. is_paid flips to True once a
+    # real payment is confirmed (via webhook or verified callback).
+    trial_ends_at = Column(DateTime, nullable=True)
+    is_paid = Column(Boolean, default=False)
+    last_tx_ref = Column(String, nullable=True)
+    paid_at = Column(DateTime, nullable=True)
+
     user = relationship("User", back_populates="enrollments")
     course = relationship("Course", back_populates="enrollments")
+
+
+class Payment(Base):
+    """One row per payment attempt, so nothing is only tracked in memory."""
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    tx_ref = Column(String, unique=True, index=True, nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, nullable=False)
+    status = Column(String, default="pending")  # pending / successful / failed
+    flw_transaction_id = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class ContactMessage(Base):

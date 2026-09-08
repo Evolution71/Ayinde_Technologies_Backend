@@ -13,6 +13,7 @@ def _to_out(m: models.TeamMember) -> schemas.TeamMemberOut:
     return schemas.TeamMemberOut(
         id=m.id, name=m.name, role=m.role, bio=m.bio, image=m.image,
         expertise=[e for e in m.expertise.split(",") if e],
+        email=m.email, phone=m.phone,
     )
 
 

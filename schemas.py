@@ -11,6 +11,8 @@ class UserRegister(BaseModel):
     name: str = Field(min_length=1, max_length=100)
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
+    captcha_token: str
+    captcha_answer: str
 
     @field_validator("password")
     @classmethod
@@ -25,6 +27,8 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
+    captcha_token: str
+    captcha_answer: str
 
 
 class UserOut(BaseModel):
@@ -63,6 +67,8 @@ class TeamMemberOut(BaseModel):
     bio: str
     image: str
     expertise: List[str]
+    email: Optional[str] = None
+    phone: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -94,7 +100,11 @@ class CourseOut(BaseModel):
     level: str
     duration: str
     icon: str
+    price: float
+    currency: str
     enrolled: bool = False
+    access_status: str = "not_enrolled"  # not_enrolled / trial / active / expired
+    trial_ends_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -103,6 +113,29 @@ class CourseOut(BaseModel):
 class EnrollResponse(BaseModel):
     status: str
     course_id: int
+    trial_ends_at: Optional[datetime] = None
+
+
+# ---------- Payments ----------
+
+class PaymentInitRequest(BaseModel):
+    course_id: int
+    redirect_url: Optional[str] = None
+
+
+class PaymentInitResponse(BaseModel):
+    status: str  # "success" | "unavailable" | "error"
+    message: str
+    payment_link: Optional[str] = None
+
+
+class PaymentVerifyRequest(BaseModel):
+    transaction_id: str
+
+
+class PaymentVerifyResponse(BaseModel):
+    status: str  # "success" | "unavailable" | "error"
+    message: str
 
 
 # ---------- Contact ----------

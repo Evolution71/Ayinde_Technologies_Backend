@@ -7,22 +7,22 @@ RUN apt-get update && apt-get install -y \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
+# Copy requirements first so this layer is cached unless deps change
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY main.py .
-COPY .env.example .env
+# Copy the whole app — database.py, models.py, schemas.py, auth.py,
+# security.py, seed.py, payments.py, main.py, routers/, etc.
+# (.dockerignore keeps venv/, .env, __pycache__, and *.db out of the image)
+COPY . .
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Real secrets (SECRET_KEY, DATABASE_URL, FLUTTERWAVE_*, etc.) come from
+# environment variables set in your hosting platform's dashboard — not
+# baked into the image. $PORT is set automatically by most platforms
+# (Railway, Render); falls back to 8000 if unset.
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
