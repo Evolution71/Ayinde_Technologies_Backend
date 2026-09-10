@@ -37,7 +37,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 # --- CORS ---
 # Locked to specific origins rather than "*" — set ALLOWED_ORIGINS in .env
 # to a comma-separated list once you know your real frontend URL(s).
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "https://ayindetechnologies.com").split(",")
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

@@ -46,7 +46,7 @@ def seed_if_empty(db: Session):
     if db.query(models.TeamMember).count() == 0:
         team = [
             dict(name="Albert A. D. Cabrera", role="Founder & CEO",
-                 bio="Founder and CEO of Ayinde Technologies Limited, leading strategy and client partnerships.",
+                 bio="Founder and CEO of Ayinde Technologies, leading strategy and client partnerships.",
                  image="👨‍💼", expertise="Strategic Planning,Business Development,Client Partnerships",
                  email="support@ayindetechnologies.com", phone="949-520-8178"),
             dict(name="Ezuma Festus", role="Tech Lead",
