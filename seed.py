@@ -45,7 +45,7 @@ def seed_if_empty(db: Session):
 
     if db.query(models.TeamMember).count() == 0:
         team = [
-            dict(name="Albert Cabrera", role="Founder & CEO",
+            dict(name="Albert A. D. Cabrera", role="Founder & CEO",
                  bio="Founder and CEO of Ayinde Technologies, leading strategy and client partnerships.",
                  image="👨‍💼", expertise="Strategic Planning,Business Development,Client Partnerships",
                  email="support@ayindetechnologies.com", phone="949-520-8178"),
@@ -53,10 +53,10 @@ def seed_if_empty(db: Session):
                  bio="Tech Lead at Ayinde Technologies, overseeing build quality and implementation.",
                  image="👨‍💻", expertise="Backend Development,System Architecture,AI Implementation",
                  email="support@ayindetechnologies.com", phone=None),
-            dict(name="Onyekalamba Miriam", role="Email Marketer",
-                 bio="Email Marketer at Ayinde Technologies, handling outreach and client communications.",
-                 image="👩‍💼", expertise="Email Marketing,Client Communications,Campaign Strategy",
-                 email="support@ayindetechnologies.com", phone=None),
+            dict(name="AI Consultant", role="ML Engineer",
+                 bio="Specialized in implementing machine learning solutions for enterprises",
+                 image="👨‍🔬", expertise="Machine Learning,Data Science,AI Solutions",
+                 email=None, phone=None),
         ]
         db.bulk_save_objects([models.TeamMember(**t) for t in team])
 

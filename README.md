@@ -97,9 +97,8 @@ To go from "unavailable" to live payments:
 1. Create a Flutterwave account at dashboard.flutterwave.com
 2. Get your secret key from API settings, set `FLUTTERWAVE_SECRET_KEY`
 3. Set up a webhook (Settings → Webhooks) pointing at
-   `https://ayindetechnologiesbackend-production.up.railway.app/api/payments/webhook`,
-   with a secret hash you choose — set that same value as
-   `FLUTTERWAVE_SECRET_HASH`
+   `https://your-backend-url/api/payments/webhook`, with a secret hash you
+   choose — set that same value as `FLUTTERWAVE_SECRET_HASH`
 4. Adjust course prices directly in the database (`Course.price`,
    `Course.currency`) — the seeded prices are placeholders
 
