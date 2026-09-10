@@ -33,7 +33,7 @@ def initiate_payment(
         )
 
     tx_ref = payments.make_tx_ref(current_user.id, course.id)
-    redirect_url = payload.redirect_url or "http://localhost:3000/payment-complete"
+    redirect_url = payload.redirect_url or "https://ayindetechnologies.com/payment-complete"
 
     ok, result = payments.create_payment_link(
         tx_ref=tx_ref,
