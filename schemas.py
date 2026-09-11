@@ -100,8 +100,8 @@ class CourseOut(BaseModel):
     level: str
     duration: str
     icon: str
-    price: float
-    currency: str
+    price: Optional[float] = None
+    currency: Optional[str] = None
     enrolled: bool = False
     access_status: str = "not_enrolled"  # not_enrolled / trial / active / expired
     trial_ends_at: Optional[datetime] = None
