@@ -1,110 +1,312 @@
 """
-Flutterwave integration for course subscriptions.
-
-Flow: 30-day free trial starts on enrollment (see routers/courses.py). When
-the trial ends, the frontend calls /api/payments/initiate to get a
-Flutterwave checkout link. Flutterwave confirms payment two ways — a
-webhook (routers/payments.py) and/or the browser redirect back with a
-transaction_id, which the frontend should send to /api/payments/verify.
-
-CRITICAL: everything in this module is written to fail soft. If
-FLUTTERWAVE_SECRET_KEY isn't set — e.g. you're live before you've set up a
-merchant account — payments_enabled() returns False and every payment
-endpoint returns a clean "not available yet" response instead of a 500.
-Nothing else on the site (courses, login, contact) depends on this module
-at all, so a missing key here can't break anything else.
+Flutterwave payment integration for Ayinde Technologies.
+Handles payment initialization, verification, and webhook handling.
 """
 
 import os
-import uuid
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from sqlalchemy.orm import Session
 import requests
+from datetime import datetime, timedelta
+import hmac
+import hashlib
+from typing import Optional
 
+from database import SessionLocal
+from security import get_current_user
+from models import User, Course, CourseEnrollment, Payment
+import schemas
+
+router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+# Flutterwave config
+FLW_PUBLIC_KEY = os.getenv("FLUTTERWAVE_PUBLIC_KEY")
+FLW_SECRET_KEY = os.getenv("FLUTTERWAVE_SECRET_KEY")
 FLW_BASE_URL = "https://api.flutterwave.com/v3"
 
 
-def payments_enabled() -> bool:
-    return bool(os.getenv("FLUTTERWAVE_SECRET_KEY"))
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 
-def _secret_key() -> str:
-    return os.getenv("FLUTTERWAVE_SECRET_KEY", "")
+# ========== Payment Initialization ==========
 
-
-def make_tx_ref(user_id: int, course_id: int) -> str:
-    return f"ayinde-u{user_id}-c{course_id}-{uuid.uuid4().hex[:10]}"
-
-
-def create_payment_link(*, tx_ref: str, amount: float, currency: str,
-                         customer_email: str, customer_name: str,
-                         redirect_url: str, title: str):
+@router.post("/initiate")
+def initiate_payment(
+    request: schemas.PaymentInitRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     """
-    Calls Flutterwave's Standard payment endpoint. Returns (True, link) on
-    success, or (False, error_message) on failure — never raises, so a
-    Flutterwave outage or bad key can't take down the endpoint calling this.
+    Initiate a payment for a course using Flutterwave.
+    Returns payment link for the user to proceed.
     """
-    if not payments_enabled():
-        return False, "Payments aren't configured yet."
-
+    
+    # Get course
+    course = db.query(Course).filter(Course.id == request.course_id).first()
+    if not course:
+        raise HTTPException(status_code=404, detail="Course not found")
+    
+    # Check if user already has active enrollment
+    existing = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course.id,
+        CourseEnrollment.status.in_(["trial", "active"])
+    ).first()
+    
+    if existing:
+        if existing.status == "trial":
+            return {
+                "status": "trial_active",
+                "message": "You're already in the free trial. Trial ends at: " + str(existing.trial_ends_at),
+                "payment_link": None
+            }
+        else:
+            return {
+                "status": "already_enrolled",
+                "message": "You already have active access to this course",
+                "payment_link": None
+            }
+    
+    # Create payment record (PENDING)
+    payment = Payment(
+        user_id=current_user.id,
+        amount=course.price,
+        currency=course.currency,
+        status="pending",
+        payment_data={
+            "course_id": course.id,
+            "course_title": course.title,
+            "user_email": current_user.email,
+            "user_name": current_user.name,
+        }
+    )
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    
+    # Prepare Flutterwave payload
+    payload = {
+        "tx_ref": f"ayinde-{payment.id}-{current_user.id}",  # Unique reference
+        "amount": course.price,
+        "currency": course.currency,
+        "payment_options": "card, banktransfer, mobilemoney, ussd",  # All payment methods
+        "customer": {
+            "email": current_user.email,
+            "name": current_user.name,
+        },
+        "customizations": {
+            "title": f"Ayinde Technologies - {course.title}",
+            "description": f"Unlock full access to {course.title} course",
+            "logo": "https://ayindetechnologies.com/logo-mark.svg"
+        },
+        "meta": {
+            "payment_id": payment.id,
+            "course_id": course.id,
+        },
+        "redirect_url": request.redirect_url or f"https://ayindetechnologies.com/payment/verify?payment_id={payment.id}"
+    }
+    
+    # Call Flutterwave API
     try:
         response = requests.post(
             f"{FLW_BASE_URL}/payments",
-            json={
-                "tx_ref": tx_ref,
-                "amount": str(amount),
-                "currency": currency,
-                "redirect_url": redirect_url,
-                "customer": {"email": customer_email, "name": customer_name},
-                "customizations": {"title": title},
-            },
-            headers={
-                "Authorization": f"Bearer {_secret_key()}",
-                "Content-Type": "application/json",
-            },
-            timeout=15,
+            json=payload,
+            headers={"Authorization": f"Bearer {FLW_SECRET_KEY}"}
         )
+        response.raise_for_status()
         data = response.json()
-        if response.status_code == 200 and data.get("status") == "success":
-            return True, data["data"]["link"]
-        return False, data.get("message", "Could not start payment.")
+        
+        if data.get("status") == "success":
+            # Store Flutterwave reference
+            payment.flutterwave_reference = data["data"]["link"]
+            payment.payment_data["flutterwave_payment_id"] = data["data"]["id"]
+            payment.expires_at = datetime.utcnow() + timedelta(hours=24)
+            db.commit()
+            
+            return {
+                "status": "success",
+                "message": "Payment link generated",
+                "payment_link": data["data"]["link"],
+                "payment_id": payment.id
+            }
+        else:
+            payment.status = "failed"
+            db.commit()
+            raise HTTPException(status_code=400, detail="Failed to generate payment link")
+    
     except requests.RequestException as e:
-        return False, f"Could not reach the payment provider: {e}"
-    except (KeyError, ValueError):
-        return False, "Unexpected response from the payment provider."
+        payment.status = "failed"
+        db.commit()
+        raise HTTPException(status_code=500, detail=f"Payment service error: {str(e)}")
 
 
-def verify_transaction(transaction_id: str):
+# ========== Payment Verification ==========
+
+@router.post("/verify")
+def verify_payment(
+    request: schemas.PaymentVerifyRequest,
+    current_user: User = Depends(get_current_user),
+    background_tasks: BackgroundTasks = None,
+    db: Session = Depends(get_db),
+):
     """
-    Confirms a transaction's real status directly with Flutterwave — never
-    trust the redirect query params alone, they're client-controlled.
-    Returns (True, data) on a confirmed successful payment, else (False, reason).
+    Verify Flutterwave payment status using transaction reference.
+    On success, creates/activates course enrollment.
     """
-    if not payments_enabled():
-        return False, "Payments aren't configured yet."
-
+    
+    # Get payment record
+    payment = db.query(Payment).filter(Payment.id == request.payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if payment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    # Query Flutterwave
     try:
         response = requests.get(
-            f"{FLW_BASE_URL}/transactions/{transaction_id}/verify",
-            headers={"Authorization": f"Bearer {_secret_key()}"},
-            timeout=15,
+            f"{FLW_BASE_URL}/transactions/{request.transaction_id}/verify",
+            headers={"Authorization": f"Bearer {FLW_SECRET_KEY}"}
         )
+        response.raise_for_status()
         data = response.json()
-        if response.status_code == 200 and data.get("status") == "success":
-            return True, data["data"]
-        return False, data.get("message", "Could not verify transaction.")
+        
+        if data.get("status") == "success" and data["data"]["status"] == "successful":
+            # Payment verified!
+            payment.status = "success"
+            payment.flutterwave_transaction_id = data["data"]["id"]
+            payment.payment_method = data["data"].get("payment_method", "card")
+            payment.verified_at = datetime.utcnow()
+            
+            # Get course from enrollment or payment_data
+            course_id = payment.payment_data.get("course_id")
+            course = db.query(Course).filter(Course.id == course_id).first()
+            
+            if not course:
+                raise HTTPException(status_code=404, detail="Course not found")
+            
+            # Create/update enrollment
+            enrollment = db.query(CourseEnrollment).filter(
+                CourseEnrollment.user_id == current_user.id,
+                CourseEnrollment.course_id == course_id
+            ).first()
+            
+            if not enrollment:
+                # If no enrollment, create one with trial first
+                enrollment = CourseEnrollment(
+                    user_id=current_user.id,
+                    course_id=course_id,
+                    status="trial",
+                    trial_ends_at=datetime.utcnow() + timedelta(days=course.trial_duration_days)
+                )
+                db.add(enrollment)
+            
+            # After trial, mark as active
+            enrollment.status = "active"
+            enrollment.access_expires_at = datetime.utcnow() + timedelta(days=365)  # 1 year subscription
+            enrollment.last_accessed_at = datetime.utcnow()
+            
+            # Link payment to enrollment
+            payment.enrollment_id = enrollment.id
+            
+            db.commit()
+            
+            return {
+                "status": "success",
+                "message": f"Payment verified! Access to {course.title} is now active.",
+                "course_id": course_id,
+                "enrollment_id": enrollment.id
+            }
+        else:
+            payment.status = "failed"
+            db.commit()
+            raise HTTPException(status_code=400, detail="Payment verification failed")
+    
     except requests.RequestException as e:
-        return False, f"Could not reach the payment provider: {e}"
-    except (KeyError, ValueError):
-        return False, "Unexpected response from the payment provider."
+        raise HTTPException(status_code=500, detail=f"Verification error: {str(e)}")
 
 
-def verify_webhook_signature(received_signature: str) -> bool:
+# ========== Webhook Handler (Flutterwave → Your Backend) ==========
+
+@router.post("/webhook")
+def handle_flutterwave_webhook(
+    request: dict,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     """
-    Flutterwave sends back the secret hash you configured on their
-    dashboard, verbatim, in the 'verif-hash' header. If you haven't set
-    FLUTTERWAVE_SECRET_HASH yet, this always returns False — so an
-    unconfigured webhook endpoint can't be spoofed by anyone who finds the URL.
+    Handle Flutterwave webhook notifications.
+    Verify webhook signature and process payment status changes.
     """
-    configured_hash = os.getenv("FLUTTERWAVE_SECRET_HASH")
-    if not configured_hash or not received_signature:
-        return False
-    return received_signature == configured_hash
+    
+    # Verify webhook signature
+    flw_signature = request.headers.get("verif-hash")
+    webhook_secret = os.getenv("FLUTTERWAVE_WEBHOOK_SECRET")
+    
+    if not flw_signature:
+        raise HTTPException(status_code=401, detail="No signature provided")
+    
+    # Compute HMAC SHA256
+    body = request.body
+    computed_signature = hmac.new(
+        webhook_secret.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    
+    if not hmac.compare_digest(flw_signature, computed_signature):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+    
+    # Process webhook
+    data = request.json()
+    
+    if data.get("event") == "charge.completed":
+        tx_id = data["data"]["id"]
+        status = data["data"]["status"]
+        
+        # Update payment
+        payment = db.query(Payment).filter(
+            Payment.flutterwave_transaction_id == tx_id
+        ).first()
+        
+        if payment:
+            payment.status = "success" if status == "successful" else "failed"
+            payment.verified_at = datetime.utcnow()
+            db.commit()
+    
+    return {"status": "received"}
+
+
+# ========== Get Payment Status ==========
+
+@router.get("/{payment_id}")
+def get_payment_status(
+    payment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get the status of a payment.
+    """
+    
+    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    
+    if payment.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    
+    return {
+        "id": payment.id,
+        "status": payment.status,
+        "amount": payment.amount,
+        "currency": payment.currency,
+        "payment_method": payment.payment_method,
+        "created_at": payment.created_at,
+        "verified_at": payment.verified_at,
+    }

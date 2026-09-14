@@ -157,7 +157,7 @@ class Payment(Base):
     
     # Metadata
     payment_link = Column(String, nullable=True)  # Flutterwave payment link
-    metadata = Column(JSON, nullable=True)  # {course_id, user_email, ...}
+    payment_data = Column(JSON, nullable=True)  # {course_id, user_email, ...}
     
     # Dates
     created_at = Column(DateTime, server_default=func.now())
