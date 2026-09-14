@@ -1,16 +1,17 @@
 """
-SQLAlchemy models. This is where the data actually lives now — nothing
-about services, team members, projects, or courses is hardcoded into the
-route handlers anymore; it's all rows in the database, queried at request
-time. `seed.py` inserts starter rows on first run so the site isn't empty,
-but from then on it's ordinary database data you can edit like any other.
+SQLAlchemy models for Ayinde Technologies API.
+Includes courses with lessons, pricing, and payment tracking.
 """
 
-from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, JSON, Enum
 from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
+from datetime import datetime, timedelta
+import enum
 from database import Base
 
+
+# ========== Users & Auth ==========
 
 class User(Base):
     __tablename__ = "users"
@@ -19,11 +20,156 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    # Relationships
+    enrollments = relationship("CourseEnrollment", back_populates="user", cascade="all, delete-orphan")
+    payments = relationship("Payment", back_populates="user", cascade="all, delete-orphan")
+    progress = relationship("LessonProgress", back_populates="user", cascade="all, delete-orphan")
+
+
+# ========== Courses & Learning ==========
+
+class Course(Base):
+    __tablename__ = "courses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String, nullable=False, index=True)
+    description = Column(Text, nullable=False)
+    level = Column(String, default="Beginner")  # Beginner, Intermediate, Advanced
+    duration = Column(String, nullable=False)  # e.g., "4 weeks"
+    icon = Column(String, nullable=False)  # URL to icon
+    instructor = Column(String, nullable=True)
+    
+    # Pricing
+    price = Column(Float, default=100.0)  # $100 USD
+    currency = Column(String, default="USD")
+    trial_duration_days = Column(Integer, default=30)  # 1-month free trial
+    
+    # Status
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
-    enrollments = relationship("Enrollment", back_populates="user")
+    # Relationships
+    lessons = relationship("Lesson", back_populates="course", cascade="all, delete-orphan")
+    enrollments = relationship("CourseEnrollment", back_populates="course", cascade="all, delete-orphan")
 
+
+class Lesson(Base):
+    __tablename__ = "lessons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    title = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    order = Column(Integer, nullable=False)  # Lesson sequence
+    
+    # Content
+    video_url = Column(String, nullable=True)  # Supabase Storage or Mux URL
+    duration_minutes = Column(Integer, nullable=True)
+    content_html = Column(Text, nullable=True)  # Rich text/markdown
+    resources = Column(JSON, nullable=True)  # [{name: "PDF", url: "..."}, ...]
+    
+    # Quiz/Assessment
+    has_quiz = Column(Boolean, default=False)
+    quiz_data = Column(JSON, nullable=True)  # {questions: [...]}
+    
+    is_published = Column(Boolean, default=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    # Relationships
+    course = relationship("Course", back_populates="lessons")
+    progress = relationship("LessonProgress", back_populates="lesson", cascade="all, delete-orphan")
+
+
+class LessonProgress(Base):
+    __tablename__ = "lesson_progress"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
+    
+    is_completed = Column(Boolean, default=False)
+    time_spent_seconds = Column(Integer, default=0)
+    quiz_score = Column(Float, nullable=True)  # 0-100
+    started_at = Column(DateTime, server_default=func.now())
+    completed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="progress")
+    lesson = relationship("Lesson", back_populates="progress")
+
+
+# ========== Enrollment & Access ==========
+
+class CourseEnrollment(Base):
+    __tablename__ = "course_enrollments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    
+    # Status
+    status = Column(String, default="trial")  # trial / active / expired / cancelled
+    
+    # Dates
+    enrolled_at = Column(DateTime, server_default=func.now())
+    trial_ends_at = Column(DateTime, nullable=True)  # Set to 30 days from now
+    access_expires_at = Column(DateTime, nullable=True)  # For paid subscriptions
+    
+    # Progress
+    progress_percentage = Column(Float, default=0.0)
+    last_accessed_at = Column(DateTime, nullable=True)
+
+    # Relationships
+    user = relationship("User", back_populates="enrollments")
+    course = relationship("Course", back_populates="enrollments")
+    payments = relationship("Payment", back_populates="enrollment")
+
+
+# ========== Payments (Flutterwave) ==========
+
+class PaymentStatus(str, enum.Enum):
+    PENDING = "pending"
+    SUCCESS = "success"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=False)
+    
+    # Transaction
+    flutterwave_reference = Column(String, unique=True, index=True, nullable=True)
+    flutterwave_transaction_id = Column(String, unique=True, nullable=True)
+    amount = Column(Float, nullable=False)
+    currency = Column(String, default="USD")
+    
+    # Status
+    status = Column(String, default="pending")  # pending / success / failed / cancelled
+    payment_method = Column(String, nullable=True)  # card / bank_transfer / mobile_money
+    
+    # Metadata
+    payment_link = Column(String, nullable=True)  # Flutterwave payment link
+    metadata = Column(JSON, nullable=True)  # {course_id, user_email, ...}
+    
+    # Dates
+    created_at = Column(DateTime, server_default=func.now())
+    verified_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=True)  # Payment link expiry
+
+    # Relationships
+    user = relationship("User", back_populates="payments")
+    enrollment = relationship("CourseEnrollment", back_populates="payments")
+
+
+# ========== Services & Team (existing) ==========
 
 class Service(Base):
     __tablename__ = "services"
@@ -32,7 +178,8 @@ class Service(Base):
     name = Column(String, nullable=False)
     description = Column(Text, nullable=False)
     icon = Column(String, nullable=False)
-    features = Column(Text, nullable=False)  # comma-separated; split on read
+    features = Column(JSON, nullable=False)  # List of strings
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class TeamMember(Base):
@@ -43,16 +190,13 @@ class TeamMember(Base):
     role = Column(String, nullable=False)
     bio = Column(Text, nullable=False)
     image = Column(String, nullable=False)
-    expertise = Column(Text, nullable=False)  # comma-separated
+    expertise = Column(JSON, nullable=False)  # List of strings
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 
 class Project(Base):
-    """
-    A built app / project case study. Listing these requires a logged-in
-    user — see routers/projects.py.
-    """
     __tablename__ = "projects"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -61,64 +205,13 @@ class Project(Base):
     category = Column(String, nullable=False)
     description = Column(Text, nullable=False)
     image = Column(String, nullable=False)
-    technologies = Column(Text, nullable=False)  # comma-separated
-    results = Column(Text, nullable=False)  # comma-separated
-    app_url = Column(String, nullable=True)  # link to the live app, if any
+    technologies = Column(JSON, nullable=False)  # List of strings
+    results = Column(JSON, nullable=False)  # List of strings
+    app_url = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
 
 
-class Course(Base):
-    """
-    An online course. Listing these requires a logged-in user — see
-    routers/courses.py.
-    """
-    __tablename__ = "courses"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String, nullable=False)
-    description = Column(Text, nullable=False)
-    level = Column(String, nullable=False)  # Beginner / Intermediate / Advanced
-    duration = Column(String, nullable=False)
-    icon = Column(String, nullable=False)
-    price = Column(Float, default=15000.0)  # monthly price after the free trial
-    currency = Column(String, default="NGN")
-
-    enrollments = relationship("Enrollment", back_populates="course")
-
-
-class Enrollment(Base):
-    __tablename__ = "enrollments"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    enrolled_at = Column(DateTime, default=datetime.utcnow)
-
-    # Every enrollment starts with a free trial. is_paid flips to True once a
-    # real payment is confirmed (via webhook or verified callback).
-    trial_ends_at = Column(DateTime, nullable=True)
-    is_paid = Column(Boolean, default=False)
-    last_tx_ref = Column(String, nullable=True)
-    paid_at = Column(DateTime, nullable=True)
-
-    user = relationship("User", back_populates="enrollments")
-    course = relationship("Course", back_populates="enrollments")
-
-
-class Payment(Base):
-    """One row per payment attempt, so nothing is only tracked in memory."""
-    __tablename__ = "payments"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    tx_ref = Column(String, unique=True, index=True, nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String, nullable=False)
-    status = Column(String, default="pending")  # pending / successful / failed
-    flw_transaction_id = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
+# ========== Contact & Other ==========
 
 class ContactMessage(Base):
     __tablename__ = "contact_messages"
@@ -130,4 +223,5 @@ class ContactMessage(Base):
     company = Column(String, nullable=True)
     subject = Column(String, nullable=True)
     message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, server_default=func.now())
+    read = Column(Boolean, default=False)

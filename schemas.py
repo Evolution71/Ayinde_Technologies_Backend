@@ -1,7 +1,7 @@
 """Pydantic schemas — request bodies and API response shapes."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
@@ -74,7 +74,7 @@ class TeamMemberOut(BaseModel):
         from_attributes = True
 
 
-# ---------- Projects (login required) ----------
+# ---------- Projects ----------
 
 class ProjectOut(BaseModel):
     id: int
@@ -91,17 +91,51 @@ class ProjectOut(BaseModel):
         from_attributes = True
 
 
-# ---------- Courses (login required) ----------
+# ========== COURSES & LEARNING ==========
+
+class LessonOut(BaseModel):
+    """Lesson details for enrolled users."""
+    id: int
+    course_id: int
+    title: str
+    description: Optional[str] = None
+    order: int
+    duration_minutes: Optional[int] = None
+    video_url: Optional[str] = None
+    content_html: Optional[str] = None
+    resources: Optional[List[dict]] = None
+    has_quiz: bool = False
+    
+    class Config:
+        from_attributes = True
+
+
+class LessonProgressOut(BaseModel):
+    """User's progress on a lesson."""
+    id: int
+    lesson_id: int
+    is_completed: bool
+    time_spent_seconds: int
+    quiz_score: Optional[float] = None
+    started_at: datetime
+    completed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
 
 class CourseOut(BaseModel):
+    """Basic course info for public view."""
     id: int
     title: str
     description: str
     level: str
     duration: str
     icon: str
-    price: Optional[float] = None
-    currency: Optional[str] = None
+    instructor: Optional[str] = None
+    price: float = 100.0
+    currency: str = "USD"
+    trial_duration_days: int = 30
     enrolled: bool = False
     access_status: str = "not_enrolled"  # not_enrolled / trial / active / expired
     trial_ends_at: Optional[datetime] = None
@@ -110,13 +144,33 @@ class CourseOut(BaseModel):
         from_attributes = True
 
 
-class EnrollResponse(BaseModel):
-    status: str
+class CourseDetailOut(CourseOut):
+    """Detailed course view with lessons (for enrolled users)."""
+    lessons: List[LessonOut] = []
+    progress_percentage: float = 0.0
+    last_accessed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
+
+
+class CourseEnrollmentOut(BaseModel):
+    """Enrollment status."""
+    id: int
     course_id: int
+    user_id: int
+    status: str  # trial / active / expired / cancelled
+    enrolled_at: datetime
     trial_ends_at: Optional[datetime] = None
+    access_expires_at: Optional[datetime] = None
+    progress_percentage: float
+    last_accessed_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 
-# ---------- Payments ----------
+# ========== PAYMENTS ==========
 
 class PaymentInitRequest(BaseModel):
     course_id: int
@@ -124,18 +178,36 @@ class PaymentInitRequest(BaseModel):
 
 
 class PaymentInitResponse(BaseModel):
-    status: str  # "success" | "unavailable" | "error"
+    status: str  # "success" | "trial_active" | "already_enrolled" | "error"
     message: str
     payment_link: Optional[str] = None
+    payment_id: Optional[int] = None
 
 
 class PaymentVerifyRequest(BaseModel):
+    payment_id: int
     transaction_id: str
 
 
 class PaymentVerifyResponse(BaseModel):
-    status: str  # "success" | "unavailable" | "error"
+    status: str  # "success" | "error"
     message: str
+    course_id: Optional[int] = None
+    enrollment_id: Optional[int] = None
+
+
+class PaymentStatusOut(BaseModel):
+    """Payment details."""
+    id: int
+    status: str  # pending / success / failed / cancelled
+    amount: float
+    currency: str
+    payment_method: Optional[str] = None
+    created_at: datetime
+    verified_at: Optional[datetime] = None
+    
+    class Config:
+        from_attributes = True
 
 
 # ---------- Contact ----------
