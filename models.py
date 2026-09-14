@@ -143,7 +143,7 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=False)
+    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=True)
     
     # Transaction
     flutterwave_reference = Column(String, unique=True, index=True, nullable=True)
@@ -155,7 +155,7 @@ class Payment(Base):
     status = Column(String, default="pending")  # pending / success / failed / cancelled
     payment_method = Column(String, nullable=True)  # card / bank_transfer / mobile_money
     
-    # Metadata
+    # Metadata (using payment_data instead of metadata to avoid SQLAlchemy reserved word)
     payment_link = Column(String, nullable=True)  # Flutterwave payment link
     payment_data = Column(JSON, nullable=True)  # {course_id, user_email, ...}
     

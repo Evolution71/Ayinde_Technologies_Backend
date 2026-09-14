@@ -6,6 +6,7 @@ Handles video streaming, quizzes, and user progress.
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
+from typing import List
 
 from database import SessionLocal
 from security import get_current_user
@@ -220,7 +221,7 @@ def complete_lesson(
 
 # ========== Get User's Enrollments ==========
 
-@router.get("/user/enrollments", response_model=list[schemas.CourseEnrollmentOut])
+@router.get("/user/enrollments", response_model=List[schemas.CourseEnrollmentOut])
 def get_my_enrollments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

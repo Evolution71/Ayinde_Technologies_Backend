@@ -78,7 +78,7 @@ def initiate_payment(
         amount=course.price,
         currency=course.currency,
         status="pending",
-        metadata={
+        payment_data={
             "course_id": course.id,
             "course_title": course.title,
             "user_email": current_user.email,
@@ -124,7 +124,7 @@ def initiate_payment(
         if data.get("status") == "success":
             # Store Flutterwave reference
             payment.flutterwave_reference = data["data"]["link"]
-            payment.metadata["flutterwave_payment_id"] = data["data"]["id"]
+            payment.payment_data["flutterwave_payment_id"] = data["data"]["id"]
             payment.expires_at = datetime.utcnow() + timedelta(hours=24)
             db.commit()
             
@@ -183,8 +183,8 @@ def verify_payment(
             payment.payment_method = data["data"].get("payment_method", "card")
             payment.verified_at = datetime.utcnow()
             
-            # Get course from enrollment or metadata
-            course_id = payment.metadata.get("course_id")
+            # Get course from enrollment or payment_data
+            course_id = payment.payment_data.get("course_id")
             course = db.query(Course).filter(Course.id == course_id).first()
             
             if not course:
