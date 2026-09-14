@@ -13,7 +13,7 @@ import hashlib
 from typing import Optional
 
 from database import SessionLocal
-from security import get_current_user
+from auth import get_current_user
 from models import User, Course, CourseEnrollment, Payment
 import schemas
 

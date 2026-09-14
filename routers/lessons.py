@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List
 
 from database import SessionLocal
-from security import get_current_user
+from auth import get_current_user
 from models import User, Course, Lesson, CourseEnrollment, LessonProgress
 import schemas
 
