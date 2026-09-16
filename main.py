@@ -34,19 +34,24 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # --- Security headers ---
 app.add_middleware(SecurityHeadersMiddleware)
 
-# --- CORS ---
-# Locked to specific origins rather than "*" — set ALLOWED_ORIGINS in .env
-# to a comma-separated list once you know your real frontend URL(s).
-allowed_origins = [
-    origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "https://ayindetechnologies.com").split(",")
-]
-print(f"CORS allowed origins: {allowed_origins}")
+# --- CORS (FIXED) ---
+# Strip whitespace from ALLOWED_ORIGINS to prevent mismatch
+allowed_origins_str = os.getenv(
+    "ALLOWED_ORIGINS", 
+    "https://ayindetechnologies.com,http://localhost:3000"
+)
+
+# Split and strip whitespace from each origin
+allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+
+# DEBUG: Log what origins are allowed
+print(f"✓ CORS configured with allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -64,12 +69,20 @@ app.include_router(lessons.router)
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to Ayinde Technologies API", "version": "2.0.0", "status": "running"}
+    return {
+        "message": "Welcome to Ayinde Technologies API", 
+        "version": "2.0.0", 
+        "status": "running",
+        "cors_origins": allowed_origins
+    }
 
 
 @app.get("/health")
 def health():
-    return {"status": "healthy"}
+    return {
+        "status": "healthy",
+        "cors_origins": allowed_origins
+    }
 
 
 if __name__ == "__main__":

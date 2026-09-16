@@ -129,31 +129,3 @@ def start_trial(
     )
     
     db.add(enrollment)
-    db.commit()
-    db.refresh(enrollment)
-    
-    return {
-        "status": "success",
-        "message": f"Trial started! Access until {trial_ends_at.strftime('%Y-%m-%d')}",
-        "course_id": course_id,
-        "enrollment_id": enrollment.id,
-        "trial_ends_at": enrollment.trial_ends_at,
-    }
-
-
-# ========== Get User's Enrollments ==========
-
-@router.get("/user/enrollments", response_model=List[schemas.CourseEnrollmentOut])
-def get_my_enrollments(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    """
-    Get all courses user is enrolled in (trial or active).
-    """
-    
-    enrollments = db.query(CourseEnrollment).filter(
-        CourseEnrollment.user_id == current_user.id,
-    ).all()
-    
-    return enrollments
