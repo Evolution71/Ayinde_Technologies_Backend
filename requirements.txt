@@ -11,4 +11,4 @@ pyjwt==2.8.0
 pillow==10.4.0
 slowapi==0.1.9
 requests==2.32.3
-squareup==33.1.0.20231213
+squareup>=33.0.0
