@@ -17,5 +17,8 @@ pillow==10.4.0
 # Rate limiting
 slowapi==0.1.9
 
-# Payments (Flutterwave)
+# HTTP requests (generic utility)
 requests==2.32.3
+
+# Payments (Square)
+squareup==33.1.0.20231213

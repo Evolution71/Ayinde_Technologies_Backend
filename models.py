@@ -20,6 +20,7 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
@@ -96,6 +97,7 @@ class LessonProgress(Base):
     quiz_score = Column(Float, nullable=True)  # 0-100
     started_at = Column(DateTime, server_default=func.now())
     completed_at = Column(DateTime, nullable=True)
+    last_accessed_at = Column(DateTime, nullable=True)
 
     # Relationships
     user = relationship("User", back_populates="progress")
@@ -129,7 +131,7 @@ class CourseEnrollment(Base):
     payments = relationship("Payment", back_populates="enrollment")
 
 
-# ========== Payments (Flutterwave) ==========
+# ========== Payments (Square) ==========
 
 class PaymentStatus(str, enum.Enum):
     PENDING = "pending"
@@ -145,31 +147,30 @@ class Payment(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=True)
     
-    # Transaction
-    flutterwave_reference = Column(String, unique=True, index=True, nullable=True)
-    flutterwave_transaction_id = Column(String, unique=True, nullable=True)
-    amount = Column(Float, nullable=False)
-    currency = Column(String, default="USD")
+    # Square Transaction Fields
+    square_payment_id = Column(String, unique=True, index=True, nullable=True)  # Square payment ID (nonce)
+    square_receipt_url = Column(String, nullable=True)  # Square receipt/receipt URL
+    amount = Column(Float, nullable=False)  # Amount in dollars
+    currency = Column(String, default="USD")  # USD, etc.
     
     # Status
     status = Column(String, default="pending")  # pending / success / failed / cancelled
-    payment_method = Column(String, nullable=True)  # card / bank_transfer / mobile_money
+    payment_method = Column(String, nullable=True)  # card / apple_pay / google_pay / etc.
     
     # Metadata (using payment_data instead of metadata to avoid SQLAlchemy reserved word)
-    payment_link = Column(String, nullable=True)  # Flutterwave payment link
-    payment_data = Column(JSON, nullable=True)  # {course_id, user_email, ...}
+    payment_data = Column(JSON, nullable=True)  # {course_id, user_email, user_name, idempotency_key, ...}
     
     # Dates
     created_at = Column(DateTime, server_default=func.now())
     verified_at = Column(DateTime, nullable=True)
-    expires_at = Column(DateTime, nullable=True)  # Payment link expiry
+    expires_at = Column(DateTime, nullable=True)  # Payment intent expiry
 
     # Relationships
     user = relationship("User", back_populates="payments")
     enrollment = relationship("CourseEnrollment", back_populates="payments")
 
 
-# ========== Services & Team (existing) ==========
+# ========== Services & Team ==========
 
 class Service(Base):
     __tablename__ = "services"
@@ -211,7 +212,7 @@ class Project(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
-# ========== Contact & Other ==========
+# ========== Contact ==========
 
 class ContactMessage(Base):
     __tablename__ = "contact_messages"
@@ -223,5 +224,6 @@ class ContactMessage(Base):
     company = Column(String, nullable=True)
     subject = Column(String, nullable=True)
     message = Column(Text, nullable=False)
+    ip_address = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     read = Column(Boolean, default=False)
