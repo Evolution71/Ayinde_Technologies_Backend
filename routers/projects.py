@@ -1,40 +1,64 @@
-from fastapi import APIRouter, Depends, HTTPException
+"""
+Projects endpoints - display portfolio and case studies.
+
+Requires: User authentication
+
+Endpoints:
+- GET /api/projects - List all projects
+- GET /api/projects/{id} - Get project details
+"""
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
 
-import models
-import schemas
 from database import get_db
 from auth import get_current_user
+from models import User, Project
+import schemas
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
 
-def _to_out(p: models.Project) -> schemas.ProjectOut:
-    return schemas.ProjectOut(
-        id=p.id, title=p.title, client=p.client, category=p.category,
-        description=p.description, image=p.image,
-        technologies=[t for t in p.technologies.split(",") if t],
-        results=[r for r in p.results.split(",") if r],
-        app_url=p.app_url,
-    )
-
-
-@router.get("", response_model=List[schemas.ProjectOut])
-def list_projects(
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),  # 401s if not logged in
+@router.get("/", response_model=List[schemas.ProjectOut])
+async def get_projects(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    return [_to_out(p) for p in db.query(models.Project).all()]
+    """
+    Get all portfolio projects.
+    
+    Requires: User must be logged in
+    
+    Returns: List of all projects with descriptions and images
+    """
+    projects = db.query(Project).all()
+    return projects
 
 
 @router.get("/{project_id}", response_model=schemas.ProjectOut)
-def get_project(
+async def get_project(
     project_id: int,
-    db: Session = Depends(get_db),
-    current_user: models.User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
-    p = db.query(models.Project).filter(models.Project.id == project_id).first()
-    if not p:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return _to_out(p)
+    """
+    Get a specific project by ID.
+    
+    Requires: User must be logged in
+    
+    Returns: Project details with case study information
+    
+    Errors:
+    - 404: Project not found
+    - 401: User not authenticated
+    """
+    project = db.query(Project).filter(Project.id == project_id).first()
+    
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Project not found"
+        )
+    
+    return project
