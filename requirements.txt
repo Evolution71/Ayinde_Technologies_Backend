@@ -6,19 +6,9 @@ python-dotenv==1.0.0
 python-multipart==0.0.6
 sqlalchemy==2.0.23
 psycopg2-binary==2.9.9
-
-# Auth
 bcrypt==4.1.2
 pyjwt==2.8.0
-
-# Captcha image generation
 pillow==10.4.0
-
-# Rate limiting
 slowapi==0.1.9
-
-# HTTP requests (generic utility)
 requests==2.32.3
-
-# Payments (Square)
 squareup==33.1.0.20231213
