@@ -1,95 +1,98 @@
 """
-Payment processing endpoints - Square integration.
-
-Features:
-- Initialize payments for course subscriptions
-- Create payment intents for Square
-- Verify payment completion
-- Get payment status
-- Webhook handling for payment notifications
-
-Endpoints:
-- POST /api/payments/create-intent - Create Square payment intent
-- POST /api/payments/verify - Verify payment completion
-- GET /api/payments/{id} - Get payment status
-- POST /api/payments/webhook - Receive Square webhooks
+Square payment processing for Ayinde Technologies courses.
+Lazy-loads squareup to avoid startup crashes if package not installed.
 """
 
-import os
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
+import os
+import json
 import hmac
 import hashlib
-import json
 from typing import Optional
 import uuid
+import base64
 
-from squareup.client import Client
-from squareup.api_client import ApiClient
-from squareup.exceptions import ApiException
-
-from database import SessionLocal, get_db
-from auth import get_current_user  # ✅ CORRECT IMPORT
+from database import get_db
 from models import User, Course, CourseEnrollment, Payment
+from auth import get_current_user
 import schemas
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
-# Square configuration
+# Configuration
 SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN", "")
 SQUARE_APPLICATION_ID = os.getenv("SQUARE_APPLICATION_ID", "")
 SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID", "")
-SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "sandbox")  # sandbox or production
-WEBHOOK_SIGNATURE_KEY = os.getenv("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
+SQUARE_ENVIRONMENT = os.getenv("SQUARE_ENVIRONMENT", "sandbox")
+SQUARE_WEBHOOK_SIGNATURE_KEY = os.getenv("SQUARE_WEBHOOK_SIGNATURE_KEY", "")
 
-# Initialize Square client
-square_client = None
-if SQUARE_ACCESS_TOKEN:
-    square_client = Client(
-        access_token=SQUARE_ACCESS_TOKEN,
-        environment=SQUARE_ENVIRONMENT
-    )
+# Lazy-loaded Square client
+_square_client = None
+
+def get_square_client():
+    """Lazy load Square client only when payment endpoint is called."""
+    global _square_client
+    
+    if _square_client is not None:
+        return _square_client
+    
+    if not SQUARE_ACCESS_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Payments not configured. Missing SQUARE_ACCESS_TOKEN."
+        )
+    
+    try:
+        from squareup.client import Client
+        _square_client = Client(
+            access_token=SQUARE_ACCESS_TOKEN,
+            environment=SQUARE_ENVIRONMENT
+        )
+        return _square_client
+    except ImportError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Square SDK not installed. Contact support."
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to initialize Square client: {str(e)}"
+        )
 
 
-# ========== PAYMENT INTENT CREATION ==========
+# ========== CREATE PAYMENT INTENT ==========
 
 @router.post("/create-intent")
 async def create_payment_intent(
-    request: schemas.PaymentInitRequest,
+    course_id: int,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Create a Square payment intent for a course.
     
-    Features:
-    - Prevents duplicate payments
-    - Creates payment record for tracking
-    - Returns client token for frontend to use with Square Web Payments SDK
-    
-    Request body:
-    - course_id: The course to purchase
-    
     Returns:
-    - client_token: Use this in frontend with Square Web Payments SDK
-    - payment_id: For verification later
-    - amount: Amount in cents (e.g., 10000 = $100.00)
+    - client_token: For Square Web Payments SDK
+    - payment_id: For verification
+    - amount: In cents (e.g., 10000 = $100)
     - currency: USD
-    
-    Errors:
-    - 404: Course not found
-    - 400: Already has active access
-    - 503: Square service unavailable
     """
-    
     try:
         # Get course
-        course = db.query(Course).filter(Course.id == request.course_id).first()
+        course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Course not found"
+            )
+        
+        if not course.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This course is not available"
             )
         
         # Check for existing active enrollment
@@ -104,12 +107,14 @@ async def create_payment_intent(
                 return {
                     "status": "trial_active",
                     "message": f"You already have free trial access until {existing.trial_ends_at}",
-                    "client_token": None
+                    "client_token": None,
+                    "payment_id": None
                 }
             return {
                 "status": "already_enrolled",
                 "message": "You already have active access to this course",
-                "client_token": None
+                "client_token": None,
+                "payment_id": None
             }
         
         # Create payment record
@@ -118,6 +123,7 @@ async def create_payment_intent(
             amount=course.price or 100.0,
             currency=course.currency or "USD",
             status="pending",
+            payment_method="card",
             payment_data={
                 "course_id": course.id,
                 "course_title": course.title,
@@ -130,33 +136,35 @@ async def create_payment_intent(
         db.commit()
         db.refresh(payment)
         
-        # Check if Square is configured
-        if not SQUARE_ACCESS_TOKEN or not square_client:
+        # Get Square client (lazy load)
+        try:
+            client = get_square_client()
+        except HTTPException:
+            # If Square not configured, still return payment_id for frontend
             return {
                 "status": "unavailable",
-                "message": "Payments are temporarily unavailable. Please contact support.",
+                "message": "Payments temporarily unavailable. Please try again later.",
                 "client_token": None,
                 "payment_id": payment.id
             }
         
+        # Generate client token
         try:
-            # Generate client token for Web Payments SDK
-            result = square_client.client.generate_client_token()
+            result = client.client.generate_client_token()
             
             if result.is_success():
                 client_token = result.result.get("client_token")
                 
-                # Store metadata for verification
+                # Store metadata
                 payment.payment_data["client_token_created"] = datetime.utcnow().isoformat()
                 payment.expires_at = datetime.utcnow() + timedelta(hours=24)
                 db.commit()
                 
                 return {
                     "status": "success",
-                    "message": "Payment intent created. Use the client token with Square Web Payments SDK.",
                     "client_token": client_token,
                     "payment_id": payment.id,
-                    "amount": int(course.price * 100) if course.price else 10000,  # Convert to cents
+                    "amount": int((course.price or 100.0) * 100),  # Convert to cents
                     "currency": course.currency or "USD",
                     "course_title": course.title
                 }
@@ -168,12 +176,14 @@ async def create_payment_intent(
                     detail="Failed to create payment intent"
                 )
         
-        except ApiException as e:
+        except HTTPException:
+            raise
+        except Exception as e:
             payment.status = "failed"
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Square service unavailable. Please try again later."
+                detail="Square service temporarily unavailable"
             )
     
     except HTTPException:
@@ -182,48 +192,31 @@ async def create_payment_intent(
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to initiate payment"
+            detail="Failed to create payment intent"
         )
 
 
-# ========== PAYMENT VERIFICATION ==========
+# ========== VERIFY PAYMENT ==========
 
 @router.post("/verify")
 async def verify_payment(
-    request: schemas.PaymentVerifyRequest,
+    payment_id: int,
+    square_payment_id: str,
+    square_receipt_url: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Verify Square payment and activate course access.
+    Verify Square payment and grant course access.
     
-    After user completes payment in Square Web Payments SDK, verify here.
-    
-    Request body:
-    - payment_id: Payment ID from create-intent endpoint
-    - square_payment_id: Payment ID returned from Square
-    - square_receipt_url: Receipt URL from Square (optional)
-    
-    Returns:
-    - Success confirmation
-    - Course access granted
-    - Enrollment details
-    
-    Errors:
-    - 404: Payment not found
-    - 403: Payment belongs to different user
-    - 400: Payment verification failed
+    Args:
+    - payment_id: Payment ID from create-intent
+    - square_payment_id: Payment ID from Square SDK
+    - square_receipt_url: Receipt URL (optional)
     """
-    
-    if not SQUARE_ACCESS_TOKEN or not square_client:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Payments are unavailable"
-        )
-    
     try:
-        # Get payment record
-        payment = db.query(Payment).filter(Payment.id == request.payment_id).first()
+        # Get payment
+        payment = db.query(Payment).filter(Payment.id == payment_id).first()
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -233,59 +226,65 @@ async def verify_payment(
         if payment.user_id != current_user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Unauthorized"
+                detail="Not authorized"
+            )
+        
+        if payment.status != "pending":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Payment already processed"
+            )
+        
+        # Get Square client
+        try:
+            client = get_square_client()
+        except HTTPException:
+            raise
+        
+        # Get course
+        course_id = payment.payment_data.get("course_id")
+        course = db.query(Course).filter(Course.id == course_id).first()
+        if not course:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Course not found"
             )
         
         # Verify with Square
         try:
-            result = square_client.payments.retrieve_payment(request.square_payment_id)
+            result = client.payments.retrieve_payment(square_payment_id)
             
             if result.is_success():
                 payment_data = result.result.get("payment", {})
                 payment_status = payment_data.get("status")
                 
                 if payment_status == "COMPLETED":
-                    # Payment verified - grant access
+                    # Mark as verified
                     payment.status = "success"
-                    payment.flutterwave_transaction_id = request.square_payment_id  # Reusing field for Square ID
-                    payment.payment_method = "square"
+                    payment.square_payment_id = square_payment_id
+                    if square_receipt_url:
+                        payment.payment_data["receipt_url"] = square_receipt_url
                     payment.verified_at = datetime.utcnow()
                     
-                    # Store Square receipt URL if provided
-                    if request.square_receipt_url:
-                        payment.payment_data["receipt_url"] = request.square_receipt_url
-                    
-                    # Get course
-                    course_id = payment.payment_data.get("course_id")
-                    course = db.query(Course).filter(Course.id == course_id).first()
-                    
-                    if not course:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND,
-                            detail="Course not found"
-                        )
-                    
-                    # Create/update enrollment
+                    # Grant course access
                     enrollment = db.query(CourseEnrollment).filter(
                         CourseEnrollment.user_id == current_user.id,
                         CourseEnrollment.course_id == course_id
                     ).first()
                     
-                    if not enrollment:
+                    if enrollment:
+                        enrollment.status = "active"
+                        enrollment.access_expires_at = datetime.utcnow() + timedelta(days=365)
+                    else:
                         enrollment = CourseEnrollment(
                             user_id=current_user.id,
                             course_id=course_id,
-                            status="trial",
-                            trial_ends_at=datetime.utcnow() + timedelta(days=course.trial_duration_days or 30)
+                            status="active",
+                            access_expires_at=datetime.utcnow() + timedelta(days=365)
                         )
                         db.add(enrollment)
                     
-                    # Activate access
-                    enrollment.status = "active"
-                    enrollment.access_expires_at = datetime.utcnow() + timedelta(days=365)  # 1 year
-                    enrollment.last_accessed_at = datetime.utcnow()
                     payment.enrollment_id = enrollment.id
-                    
                     db.commit()
                     
                     return {
@@ -299,22 +298,24 @@ async def verify_payment(
                     db.commit()
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"Payment status is {payment_status}. Expected COMPLETED."
+                        detail=f"Payment status: {payment_status}. Expected: COMPLETED"
                     )
             else:
                 payment.status = "failed"
                 db.commit()
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to retrieve payment from Square"
+                    detail="Could not retrieve payment from Square"
                 )
         
-        except ApiException as e:
+        except HTTPException:
+            raise
+        except Exception as e:
             payment.status = "failed"
             db.commit()
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Square verification failed. Please try again."
+                detail="Payment verification failed. Please try again."
             )
     
     except HTTPException:
@@ -327,82 +328,6 @@ async def verify_payment(
         )
 
 
-# ========== WEBHOOK HANDLER ==========
-
-@router.post("/webhook")
-async def handle_square_webhook(
-    http_request: Request,
-    db: Session = Depends(get_db),
-):
-    """
-    Handle webhooks from Square.
-    
-    Square will POST payment notifications here.
-    Verifies webhook signature and updates payment status.
-    
-    Returns: Webhook received confirmation
-    """
-    
-    if not WEBHOOK_SIGNATURE_KEY:
-        return {"status": "received"}  # Silent accept if no signature key
-    
-    try:
-        # Get request body
-        body = await http_request.body()
-        body_str = body.decode("utf-8")
-        
-        # Get signature from headers
-        square_signature = http_request.headers.get("x-square-hmac-sha256")
-        if not square_signature:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="No signature provided"
-            )
-        
-        # Get request path (needed for signature verification)
-        request_path = http_request.url.path
-        
-        # Verify signature using Square's method
-        message = request_path + body_str
-        computed_signature = hmac.new(
-            WEBHOOK_SIGNATURE_KEY.encode(),
-            message.encode(),
-            hashlib.sha256
-        ).digest()
-        
-        import base64
-        computed_signature_b64 = base64.b64encode(computed_signature).decode()
-        
-        if not hmac.compare_digest(square_signature, computed_signature_b64):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid signature"
-            )
-        
-        # Process webhook
-        data = json.loads(body_str)
-        
-        if data.get("type") == "payment.created" or data.get("type") == "payment.updated":
-            payment_obj = data.get("data", {}).get("object", {}).get("payment", {})
-            payment_id = payment_obj.get("id")
-            payment_status = payment_obj.get("status")
-            
-            # Update payment record
-            payment = db.query(Payment).filter(
-                Payment.flutterwave_transaction_id == payment_id
-            ).first()
-            
-            if payment:
-                payment.status = "success" if payment_status == "COMPLETED" else "failed"
-                payment.verified_at = datetime.utcnow()
-                db.commit()
-        
-        return {"status": "received"}
-    
-    except Exception as e:
-        return {"status": "received"}  # Always return OK to Square
-
-
 # ========== GET PAYMENT STATUS ==========
 
 @router.get("/{payment_id}")
@@ -411,16 +336,7 @@ async def get_payment_status(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Get the status of a payment.
-    
-    Returns: Payment details and current status
-    
-    Errors:
-    - 404: Payment not found
-    - 403: Payment belongs to different user
-    """
-    
+    """Get payment status."""
     payment = db.query(Payment).filter(Payment.id == payment_id).first()
     if not payment:
         raise HTTPException(
@@ -431,7 +347,7 @@ async def get_payment_status(
     if payment.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Unauthorized"
+            detail="Not authorized"
         )
     
     return {
@@ -443,3 +359,69 @@ async def get_payment_status(
         "created_at": payment.created_at,
         "verified_at": payment.verified_at,
     }
+
+
+# ========== SQUARE WEBHOOK ==========
+
+@router.post("/webhook")
+async def handle_square_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle Square webhook events.
+    Verifies signature and updates payment status.
+    """
+    try:
+        # Get body
+        body = await request.body()
+        body_str = body.decode("utf-8")
+        
+        # Get signature
+        square_signature = request.headers.get("x-square-hmac-sha256")
+        
+        if not square_signature:
+            return {"status": "received"}
+        
+        if not SQUARE_WEBHOOK_SIGNATURE_KEY:
+            return {"status": "received"}
+        
+        # Verify signature
+        request_path = request.url.path
+        message = request_path + body_str
+        
+        computed_signature = hmac.new(
+            SQUARE_WEBHOOK_SIGNATURE_KEY.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).digest()
+        
+        computed_signature_b64 = base64.b64encode(computed_signature).decode()
+        
+        if not hmac.compare_digest(square_signature, computed_signature_b64):
+            return {"status": "received"}
+        
+        # Process webhook
+        data = json.loads(body_str)
+        
+        if data.get("type") in ["payment.created", "payment.updated"]:
+            payment_obj = data.get("data", {}).get("object", {}).get("payment", {})
+            payment_id = payment_obj.get("id")
+            payment_status = payment_obj.get("status")
+            
+            # Update payment if found
+            payment = db.query(Payment).filter(
+                Payment.square_payment_id == payment_id
+            ).first()
+            
+            if payment:
+                payment.status = "success" if payment_status == "COMPLETED" else "failed"
+                if payment_status == "COMPLETED":
+                    payment.verified_at = datetime.utcnow()
+                db.commit()
+        
+        return {"status": "received"}
+    
+    except Exception as e:
+        # Always return OK to Square
+        return {"status": "received"}
