@@ -358,17 +358,43 @@ class CaptchaVerifyResponse(BaseModel):
 # For backwards compatibility with existing routers
 # These allow routers to use either the Response or Out naming convention
 
+# Service aliases
 ServiceOut = ServiceResponse
+
+# Team aliases
 TeamMemberOut = TeamMemberResponse
+
+# Project aliases
 ProjectOut = ProjectResponse
+
+# Course aliases
 CourseOut = CourseResponse
+CourseDetailOut = CourseResponse
+CourseDetailResponse = CourseResponse
+CoursesOut = CourseListResponse
+CourseListOut = CourseListResponse
+
+# Enrollment aliases
 EnrollmentOut = EnrollmentResponse
+
+# Payment aliases
 PaymentOut = PaymentResponse
+
+# Lesson aliases
 LessonOut = LessonResponse
+LessonDetailOut = LessonResponse
+
+# Contact aliases
 ContactMessageOut = ContactMessageResponse
+
+# Lesson Progress aliases
 LessonProgressOut = LessonProgressResponse
 
 # Token aliases
 LoginOut = LoginResponse
 RegisterOut = AuthResponse
 UserOut = UserResponse
+
+# Generic aliases for common patterns
+DetailOut = UserResponse  # Fallback for detail endpoints
+ListOut = CourseListResponse  # Fallback for list endpoints
