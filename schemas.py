@@ -397,10 +397,16 @@ ContactResponse = ContactMessageResponse
 ContactMessage = ContactMessageResponse
 Contact = ContactMessageResponse
 ContactForm = ContactMessageResponse
+ContactOut = ContactMessageResponse
 
 # Lesson Progress aliases
 LessonProgressOut = LessonProgressResponse
 LessonProgress = LessonProgressResponse
+
+# Captcha aliases
+CaptchaOut = CaptchaVerifyResponse
+CaptchaVerify = CaptchaVerifyResponse
+Captcha = CaptchaVerifyResponse
 
 # Token aliases
 LoginOut = LoginResponse
@@ -412,3 +418,4 @@ User = UserResponse
 DetailOut = UserResponse
 ListOut = CourseListResponse
 Out = UserResponse
+Response = UserResponse
