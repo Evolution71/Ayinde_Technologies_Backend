@@ -352,3 +352,23 @@ class CaptchaVerifyRequest(BaseModel):
 class CaptchaVerifyResponse(BaseModel):
     valid: bool
     message: str
+
+
+# ========== SCHEMA ALIASES ==========
+# For backwards compatibility with existing routers
+# These allow routers to use either the Response or Out naming convention
+
+ServiceOut = ServiceResponse
+TeamMemberOut = TeamMemberResponse
+ProjectOut = ProjectResponse
+CourseOut = CourseResponse
+EnrollmentOut = EnrollmentResponse
+PaymentOut = PaymentResponse
+LessonOut = LessonResponse
+ContactMessageOut = ContactMessageResponse
+LessonProgressOut = LessonProgressResponse
+
+# Token aliases
+LoginOut = LoginResponse
+RegisterOut = AuthResponse
+UserOut = UserResponse
