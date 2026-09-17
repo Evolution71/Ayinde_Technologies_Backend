@@ -425,3 +425,68 @@ async def handle_square_webhook(
     except Exception as e:
         # Always return OK to Square
         return {"status": "received"}
+
+# ========== SQUARE WEBHOOK ==========
+
+@router.post("/webhook")
+async def handle_square_webhook(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    Handle Square webhook events.
+    Verifies signature and updates payment status.
+    """
+    try:
+        # Get body
+        body = await request.body()
+        body_str = body.decode("utf-8")
+        
+        # Get signature
+        square_signature = request.headers.get("x-square-hmac-sha256")
+        
+        if not square_signature:
+            return {"status": "received"}
+        
+        if not SQUARE_WEBHOOK_SIGNATURE_KEY:
+            return {"status": "received"}
+        
+        # Verify signature
+        request_path = request.url.path
+        message = request_path + body_str
+        
+        computed_signature = hmac.new(
+            SQUARE_WEBHOOK_SIGNATURE_KEY.encode(),
+            message.encode(),
+            hashlib.sha256
+        ).digest()
+        
+        computed_signature_b64 = base64.b64encode(computed_signature).decode()
+        
+        if not hmac.compare_digest(square_signature, computed_signature_b64):
+            return {"status": "received"}
+        
+        # Process webhook
+        data = json.loads(body_str)
+        
+        if data.get("type") in ["payment.created", "payment.updated"]:
+            payment_obj = data.get("data", {}).get("object", {}).get("payment", {})
+            payment_id = payment_obj.get("id")
+            payment_status = payment_obj.get("status")
+            
+            # Update payment if found
+            payment = db.query(Payment).filter(
+                Payment.square_payment_id == payment_id
+            ).first()
+            
+            if payment:
+                payment.status = "success" if payment_status == "COMPLETED" else "failed"
+                if payment_status == "COMPLETED":
+                    payment.verified_at = datetime.utcnow()
+                db.commit()
+        
+        return {"status": "received"}
+    
+    except Exception as e:
+        # Always return OK to Square
+        return {"status": "received"}

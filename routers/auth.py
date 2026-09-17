@@ -1,197 +1,183 @@
 """
-Authentication endpoints: register, login, get current user.
-
-Endpoints:
-- POST /api/auth/register - Create new user account
-- POST /api/auth/login - Login with email and password
-- GET /api/auth/me - Get current user info (requires auth)
-- POST /api/auth/logout - Logout (frontend deletes token)
+Authentication router - login, register, logout, get current user.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from datetime import timedelta
 
 from database import get_db
-from auth import hash_password, verify_password, create_access_token, get_current_user
+from auth import (
+    hash_password,
+    verify_password,
+    create_access_token,
+    get_current_user,
+)
 from models import User
 import schemas
-from security import verify_captcha, limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
-@router.post("/register", response_model=schemas.Token)
-@limiter.limit("5/minute")
+
+# ========== REGISTER ==========
+
+@router.post("/register", response_model=schemas.AuthResponse)
 async def register(
-    request: Request,
     user_data: schemas.UserRegister,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
-    Register a new user account.
+    Register a new user.
     
-    Required fields:
-    - name: User's full name (1-100 chars)
-    - email: Valid email address (must be unique)
-    - password: Min 8 chars, must contain letter + number
-    - captcha_token: From /api/captcha endpoint
-    - captcha_answer: User's answer to captcha
+    Request:
+    - name: User's full name
+    - email: User's email (must be unique)
+    - password: User's password
+    - captcha_token: Optional captcha verification token
+    - captcha_answer: Optional captcha answer
     
-    Returns: JWT access token
-    
-    Errors:
-    - 400: Email already registered, password too weak, invalid captcha
-    - 429: Too many requests (rate limited to 5/min)
+    Returns:
+    - access_token: JWT token for authentication
+    - token_type: "bearer"
+    - user: User details
     """
     
-    try:
-        # Verify captcha
-        if not verify_captcha(user_data.captcha_token, user_data.captcha_answer):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid captcha. Please try again."
-            )
-        
-        # Check if user already exists
-        existing_user = db.query(User).filter(User.email == user_data.email).first()
-        if existing_user:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email is already registered. Please login or use a different email."
-            )
-        
-        # Create new user
-        hashed_password = hash_password(user_data.password)
-        new_user = User(
-            name=user_data.name,
-            email=user_data.email,
-            hashed_password=hashed_password,
-            is_active=True
-        )
-        
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        
-        # Create JWT token
-        access_token = create_access_token({"sub": str(new_user.id)})
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": schemas.UserOut.from_attributes(new_user)
-        }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
+    # Check if email already exists
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create account. Please try again."
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered"
         )
+    
+    # Create new user
+    hashed_password = hash_password(user_data.password)
+    new_user = User(
+        name=user_data.name,
+        email=user_data.email,
+        hashed_password=hashed_password
+    )
+    
+    db.add(new_user)
+    db.commit()
+    db.refresh(new_user)
+    
+    # Generate token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": new_user.email},
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": new_user.id,
+            "name": new_user.name,
+            "email": new_user.email,
+            "created_at": new_user.created_at,
+        }
+    }
 
 
-@router.post("/login", response_model=schemas.Token)
-@limiter.limit("10/minute")
+# ========== LOGIN ==========
+
+@router.post("/login", response_model=schemas.AuthResponse)
 async def login(
-    request: Request,
-    credentials: schemas.UserLogin,
-    db: Session = Depends(get_db)
+    user_data: schemas.UserLogin,
+    db: Session = Depends(get_db),
 ):
     """
     Login with email and password.
     
-    Required fields:
-    - email: Registered email address
-    - password: Account password
-    - captcha_token: From /api/captcha endpoint
-    - captcha_answer: User's answer to captcha
+    Request:
+    - email: User's email
+    - password: User's password
+    - captcha_token: Optional captcha verification token
+    - captcha_answer: Optional captcha answer
     
-    Returns: JWT access token
-    
-    Errors:
-    - 401: Invalid email/password combination
-    - 403: Account is disabled
-    - 400: Invalid captcha
-    - 429: Too many login attempts (rate limited to 10/min)
+    Returns:
+    - access_token: JWT token for authentication
+    - token_type: "bearer"
+    - user: User details
     """
     
-    try:
-        # Verify captcha
-        if not verify_captcha(credentials.captcha_token, credentials.captcha_answer):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Invalid captcha. Please try again."
-            )
-        
-        # Find user
-        user = db.query(User).filter(User.email == credentials.email).first()
-        
-        if not user or not verify_password(credentials.password, user.hashed_password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid email or password.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-        
-        # Check if account is active
-        if not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account is disabled. Please contact support."
-            )
-        
-        # Create JWT token
-        access_token = create_access_token({"sub": str(user.id)})
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": schemas.UserOut.from_attributes(user)
-        }
+    # Find user by email
+    user = db.query(User).filter(User.email == user_data.email).first()
     
-    except HTTPException:
-        raise
-    except Exception as e:
+    if not user:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Login failed. Please try again."
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
         )
+    
+    # Verify password
+    if not verify_password(user_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
+    
+    # Generate token
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "created_at": user.created_at,
+        }
+    }
 
 
-@router.get("/me", response_model=schemas.UserOut)
-async def get_current_user_info(
-    current_user: User = Depends(get_current_user)
+# ========== GET CURRENT USER ==========
+
+@router.get("/me", response_model=schemas.UserResponse)
+async def get_me(
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Get current logged-in user's profile information.
+    Get current authenticated user's profile.
     
-    Requires: Valid JWT token in Authorization header
-    
-    Returns: Current user's details
-    
-    Errors:
-    - 401: Missing or invalid token
+    Returns:
+    - User details (id, name, email, created_at)
     """
-    return schemas.UserOut.from_attributes(current_user)
+    
+    return {
+        "id": current_user.id,
+        "name": current_user.name,
+        "email": current_user.email,
+        "created_at": current_user.created_at,
+    }
 
+
+# ========== LOGOUT ==========
 
 @router.post("/logout")
 async def logout(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """
-    Logout endpoint (informational - actual logout happens on frontend).
+    Logout current user.
     
-    Frontend should:
-    1. Call this endpoint (optional, for logging purposes)
-    2. Delete the JWT token from localStorage/cookies
-    3. Redirect to login page
+    Note: JWT tokens don't have server-side logout.
+    Frontend should delete the token from localStorage.
     
-    Returns: Success message
+    Returns:
+    - message: Logout confirmation
     """
+    
     return {
-        "status": "success",
-        "message": "Logged out successfully. Please delete your token."
+        "message": "Logged out successfully",
+        "user_id": current_user.id
     }

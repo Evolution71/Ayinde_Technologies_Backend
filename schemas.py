@@ -1,6 +1,6 @@
 """
-Pydantic schemas for request/response validation.
-Includes validators to handle comma-separated strings from database.
+Pydantic schemas for Ayinde Technologies API.
+All request/response models with validators for list fields.
 """
 
 from pydantic import BaseModel, Field, field_validator, EmailStr
@@ -27,7 +27,23 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
 
+class UserRegister(BaseModel):
+    """Schema for user registration - includes captcha fields"""
+    name: str
+    email: EmailStr
+    password: str
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
+
+class UserLogin(BaseModel):
+    """Schema for user login"""
+    email: EmailStr
+    password: str
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
+
 class UserResponse(UserBase):
+    """Schema for user response"""
     id: int
     created_at: datetime
     
@@ -51,6 +67,12 @@ class RegisterRequest(BaseModel):
     password: str
     captcha_token: Optional[str] = None
     captcha_answer: Optional[str] = None
+
+class AuthResponse(BaseModel):
+    """Generic auth response"""
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
 
 
 # ========== COURSE SCHEMAS ==========
@@ -178,6 +200,7 @@ class TeamMemberCreate(TeamMemberBase):
     pass
 
 class TeamMemberResponse(BaseModel):
+    """Team member with list validator for expertise"""
     id: int
     name: str
     role: str
@@ -211,6 +234,7 @@ class ServiceCreate(ServiceBase):
     pass
 
 class ServiceResponse(BaseModel):
+    """Service with list validator for features"""
     id: int
     name: str
     description: str
@@ -245,6 +269,7 @@ class ProjectCreate(ProjectBase):
     pass
 
 class ProjectResponse(BaseModel):
+    """Project with list validators for technologies and results"""
     id: int
     title: str
     client: str
@@ -323,3 +348,7 @@ class LessonProgressResponse(LessonProgressBase):
 class CaptchaVerifyRequest(BaseModel):
     token: str
     user_answer: Optional[str] = None
+
+class CaptchaVerifyResponse(BaseModel):
+    valid: bool
+    message: str
