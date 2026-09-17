@@ -355,40 +355,60 @@ class CaptchaVerifyResponse(BaseModel):
 
 
 # ========== SCHEMA ALIASES ==========
-
-
-# ========== SCHEMA ALIASES ==========
 # Comprehensive aliases for all routers
+# Maps various naming conventions used throughout the codebase
 
+# Service aliases
 ServiceOut = ServiceResponse
 ServiceDetail = ServiceResponse
+
+# Team aliases
 TeamMemberOut = TeamMemberResponse
 TeamMember = TeamMemberResponse
+
+# Project aliases
 ProjectOut = ProjectResponse
 ProjectDetail = ProjectResponse
+
+# Course aliases
 CourseOut = CourseResponse
 CourseDetailOut = CourseResponse
 CourseDetailResponse = CourseResponse
 CoursesOut = CourseListResponse
 CourseListOut = CourseListResponse
 CourseDetail = CourseResponse
+
+# Enrollment aliases
 EnrollmentOut = EnrollmentResponse
 Enrollment = EnrollmentResponse
+
+# Payment aliases
 PaymentOut = PaymentResponse
 Payment = PaymentResponse
+
+# Lesson aliases
 LessonOut = LessonResponse
 LessonDetail = LessonResponse
 LessonDetailOut = LessonResponse
+
+# Contact aliases
 ContactMessageOut = ContactMessageResponse
 ContactResponse = ContactMessageResponse
 ContactMessage = ContactMessageResponse
 Contact = ContactMessageResponse
+ContactForm = ContactMessageResponse
+
+# Lesson Progress aliases
 LessonProgressOut = LessonProgressResponse
 LessonProgress = LessonProgressResponse
+
+# Token aliases
 LoginOut = LoginResponse
 RegisterOut = AuthResponse
 UserOut = UserResponse
 User = UserResponse
+
+# Generic aliases
 DetailOut = UserResponse
 ListOut = CourseListResponse
 Out = UserResponse
