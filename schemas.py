@@ -1,67 +1,161 @@
-"""Pydantic schemas — request bodies and API response shapes."""
+"""
+Pydantic schemas for request/response validation.
+Includes validators to handle comma-separated strings from database.
+"""
 
+from pydantic import BaseModel, Field, field_validator, EmailStr
+from typing import List, Optional, Dict, Any
 from datetime import datetime
-from typing import List, Optional, Any
-from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
-# ---------- Auth ----------
+# ========== AUTH SCHEMAS ==========
 
-class UserRegister(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+class UserBase(BaseModel):
+    name: str
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
-    captcha_token: str
-    captcha_answer: str
 
-    @field_validator("password")
-    @classmethod
-    def password_strength(cls, v):
-        if not any(c.isdigit() for c in v):
-            raise ValueError("Password must contain at least one number")
-        if not any(c.isalpha() for c in v):
-            raise ValueError("Password must contain at least one letter")
-        return v
+class UserCreate(UserBase):
+    password: str
 
+class UserResponse(UserBase):
+    id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
 
-class UserLogin(BaseModel):
+class LoginRequest(BaseModel):
     email: EmailStr
     password: str
-    captcha_token: str
-    captcha_answer: str
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
 
-
-class UserOut(BaseModel):
-    id: int
-    name: str
-    email: EmailStr
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class Token(BaseModel):
+class LoginResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user: UserOut
+    user: UserResponse
 
-
-# ---------- Services / Team ----------
-
-class ServiceOut(BaseModel):
-    id: int
+class RegisterRequest(BaseModel):
     name: str
-    description: str
-    icon: str
-    features: List[str]
+    email: EmailStr
+    password: str
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
 
+
+# ========== COURSE SCHEMAS ==========
+
+class LessonBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    order: int
+    video_url: Optional[str] = None
+    duration_minutes: Optional[int] = None
+    content_html: Optional[str] = None
+    has_quiz: bool = False
+    quiz_data: Optional[Dict[str, Any]] = None
+    is_published: bool = True
+
+class LessonCreate(LessonBase):
+    course_id: int
+
+class LessonResponse(LessonBase):
+    id: int
+    course_id: int
+    created_at: datetime
+    
+    class Config:
+        from_attributes = True
+
+class CourseBase(BaseModel):
+    title: str
+    description: str
+    level: str = "Beginner"
+    duration: str
+    icon: str
+    instructor: Optional[str] = None
+    price: float = 100.0
+    currency: str = "USD"
+    trial_duration_days: int = 30
+    is_active: bool = True
+
+class CourseCreate(CourseBase):
+    pass
+
+class CourseResponse(CourseBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+    lessons: List[LessonResponse] = []
+    
+    class Config:
+        from_attributes = True
+
+class CourseListResponse(BaseModel):
+    id: int
+    title: str
+    description: str
+    level: str
+    duration: str
+    icon: str
+    instructor: Optional[str]
+    price: float
+    currency: str
+    trial_duration_days: int
+    is_active: bool
+    
     class Config:
         from_attributes = True
 
 
-class TeamMemberOut(BaseModel):
+# ========== ENROLLMENT SCHEMAS ==========
+
+class EnrollmentBase(BaseModel):
+    user_id: int
+    course_id: int
+    status: str = "trial"
+
+class EnrollmentCreate(EnrollmentBase):
+    pass
+
+class EnrollmentResponse(EnrollmentBase):
     id: int
+    enrolled_at: datetime
+    trial_ends_at: Optional[datetime]
+    access_expires_at: Optional[datetime]
+    progress_percentage: float
+    last_accessed_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+# ========== PAYMENT SCHEMAS ==========
+
+class PaymentInitRequest(BaseModel):
+    course_id: int
+
+class PaymentVerifyRequest(BaseModel):
+    payment_id: int
+    square_payment_id: str
+    square_receipt_url: Optional[str] = None
+
+class PaymentResponse(BaseModel):
+    id: int
+    amount: float
+    currency: str
+    status: str
+    payment_method: Optional[str]
+    created_at: datetime
+    verified_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+# ========== TEAM SCHEMAS ==========
+
+class TeamMemberBase(BaseModel):
     name: str
     role: str
     bio: str
@@ -70,14 +164,64 @@ class TeamMemberOut(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
 
+class TeamMemberCreate(TeamMemberBase):
+    pass
+
+class TeamMemberResponse(BaseModel):
+    id: int
+    name: str
+    role: str
+    bio: str
+    image: str
+    expertise: List[str]
+    email: Optional[str]
+    phone: Optional[str]
+    
+    @field_validator('expertise', mode='before')
+    @classmethod
+    def parse_expertise(cls, v):
+        """Convert comma-separated string to list if needed."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        return v if isinstance(v, list) else []
+    
     class Config:
         from_attributes = True
 
 
-# ---------- Projects ----------
+# ========== SERVICE SCHEMAS ==========
 
-class ProjectOut(BaseModel):
+class ServiceBase(BaseModel):
+    name: str
+    description: str
+    icon: str
+    features: List[str]
+
+class ServiceCreate(ServiceBase):
+    pass
+
+class ServiceResponse(BaseModel):
     id: int
+    name: str
+    description: str
+    icon: str
+    features: List[str]
+    
+    @field_validator('features', mode='before')
+    @classmethod
+    def parse_features(cls, v):
+        """Convert comma-separated string to list if needed."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        return v if isinstance(v, list) else []
+    
+    class Config:
+        from_attributes = True
+
+
+# ========== PROJECT SCHEMAS ==========
+
+class ProjectBase(BaseModel):
     title: str
     client: str
     category: str
@@ -87,149 +231,85 @@ class ProjectOut(BaseModel):
     results: List[str]
     app_url: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+class ProjectCreate(ProjectBase):
+    pass
 
-
-# ========== COURSES & LEARNING ==========
-
-class LessonOut(BaseModel):
-    """Lesson details for enrolled users."""
-    id: int
-    course_id: int
-    title: str
-    description: Optional[str] = None
-    order: int
-    duration_minutes: Optional[int] = None
-    video_url: Optional[str] = None
-    content_html: Optional[str] = None
-    resources: Optional[List[dict]] = None
-    has_quiz: bool = False
-    
-    class Config:
-        from_attributes = True
-
-
-class LessonProgressOut(BaseModel):
-    """User's progress on a lesson."""
-    id: int
-    lesson_id: int
-    is_completed: bool
-    time_spent_seconds: int
-    quiz_score: Optional[float] = None
-    started_at: datetime
-    completed_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-
-
-class CourseOut(BaseModel):
-    """Basic course info for public view."""
+class ProjectResponse(BaseModel):
     id: int
     title: str
+    client: str
+    category: str
     description: str
-    level: str
-    duration: str
-    icon: str
-    instructor: Optional[str] = None
-    price: float = 100.0
-    currency: str = "USD"
-    trial_duration_days: int = 30
-    enrolled: bool = False
-    access_status: str = "not_enrolled"  # not_enrolled / trial / active / expired
-    trial_ends_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class CourseDetailOut(CourseOut):
-    """Detailed course view with lessons (for enrolled users)."""
-    lessons: List[LessonOut] = []
-    progress_percentage: float = 0.0
-    last_accessed_at: Optional[datetime] = None
+    image: str
+    technologies: List[str]
+    results: List[str]
+    app_url: Optional[str]
+    
+    @field_validator('technologies', mode='before')
+    @classmethod
+    def parse_technologies(cls, v):
+        """Convert comma-separated string to list if needed."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        return v if isinstance(v, list) else []
+    
+    @field_validator('results', mode='before')
+    @classmethod
+    def parse_results(cls, v):
+        """Convert comma-separated string to list if needed."""
+        if isinstance(v, str):
+            return [item.strip() for item in v.split(',') if item.strip()]
+        return v if isinstance(v, list) else []
     
     class Config:
         from_attributes = True
 
 
-class CourseEnrollmentOut(BaseModel):
-    """Enrollment status."""
-    id: int
-    course_id: int
-    user_id: int
-    status: str  # trial / active / expired / cancelled
-    enrolled_at: datetime
-    trial_ends_at: Optional[datetime] = None
-    access_expires_at: Optional[datetime] = None
-    progress_percentage: float
-    last_accessed_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
+# ========== CONTACT SCHEMAS ==========
 
-
-# ========== PAYMENTS ==========
-
-class PaymentInitRequest(BaseModel):
-    course_id: int
-    redirect_url: Optional[str] = None
-
-
-class PaymentInitResponse(BaseModel):
-    status: str  # "success" | "trial_active" | "already_enrolled" | "error"
-    message: str
-    payment_link: Optional[str] = None
-    payment_id: Optional[int] = None
-
-
-class PaymentVerifyRequest(BaseModel):
-    payment_id: int
-    transaction_id: str
-
-
-class PaymentVerifyResponse(BaseModel):
-    status: str  # "success" | "error"
-    message: str
-    course_id: Optional[int] = None
-    enrollment_id: Optional[int] = None
-
-
-class PaymentStatusOut(BaseModel):
-    """Payment details."""
-    id: int
-    status: str  # pending / success / failed / cancelled
-    amount: float
-    currency: str
-    payment_method: Optional[str] = None
-    created_at: datetime
-    verified_at: Optional[datetime] = None
-    
-    class Config:
-        from_attributes = True
-
-
-# ---------- Contact ----------
-
-class ContactForm(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
+class ContactMessageBase(BaseModel):
+    name: str
     email: EmailStr
     phone: Optional[str] = None
     company: Optional[str] = None
     subject: Optional[str] = None
-    message: str = Field(min_length=1, max_length=5000)
-    captcha_token: str
-    captcha_answer: str
-
-
-class ContactResponse(BaseModel):
-    status: str
     message: str
 
+class ContactMessageCreate(ContactMessageBase):
+    pass
 
-# ---------- Captcha ----------
+class ContactMessageResponse(ContactMessageBase):
+    id: int
+    created_at: datetime
+    read: bool = False
+    
+    class Config:
+        from_attributes = True
 
-class CaptchaOut(BaseModel):
+
+# ========== LESSON PROGRESS SCHEMAS ==========
+
+class LessonProgressBase(BaseModel):
+    lesson_id: int
+    is_completed: bool = False
+    time_spent_seconds: int = 0
+    quiz_score: Optional[float] = None
+
+class LessonProgressCreate(LessonProgressBase):
+    pass
+
+class LessonProgressResponse(LessonProgressBase):
+    id: int
+    user_id: int
+    started_at: datetime
+    completed_at: Optional[datetime]
+    
+    class Config:
+        from_attributes = True
+
+
+# ========== CAPTCHA SCHEMAS ==========
+
+class CaptchaVerifyRequest(BaseModel):
     token: str
-    image: str
+    user_answer: Optional[str] = None
