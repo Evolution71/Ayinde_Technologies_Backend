@@ -1,90 +1,113 @@
+"""
+Main FastAPI application for Ayinde Technologies.
+Includes CORS, middleware, and all routers.
+"""
+
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from slowapi.errors import RateLimitExceeded
-from slowapi import _rate_limit_exceeded_handler
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
-from database import Base, engine, SessionLocal
-from security import limiter, SecurityHeadersMiddleware
-from seed import seed_if_empty
-from migrate import run_lightweight_migrations
-from routers import auth, services, team, projects, courses, contact, captcha, payments, lessons
+# Import database and routers
+from database import Base, engine, get_db
+from routers import auth, courses, services, team, projects, contact, lessons, payments, captcha
 
-# Create tables if they don't exist yet...
+# Create tables
 Base.metadata.create_all(bind=engine)
-# ...then add any columns that models.py has but a pre-existing table
-# (from an earlier deploy) doesn't yet.
-run_lightweight_migrations(engine, Base)
 
-_db = SessionLocal()
-try:
-    seed_if_empty(_db)
-finally:
-    _db.close()
-
-app = FastAPI(title="Ayinde Technologies API", version="2.0.0")
-
-# --- Rate limiting ---
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-# --- Security headers ---
-app.add_middleware(SecurityHeadersMiddleware)
-
-# --- CORS (FIXED) ---
-# Strip whitespace from ALLOWED_ORIGINS to prevent mismatch
-allowed_origins_str = os.getenv(
-    "ALLOWED_ORIGINS", 
-    "https://ayindetechnologies.com,http://localhost:3000"
+# Initialize FastAPI app
+app = FastAPI(
+    title="Ayinde Technologies API",
+    description="Full-stack API for Ayinde Technologies platform",
+    version="1.0.0"
 )
 
-# Split and strip whitespace from each origin
-allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",")]
+# ========== CORS CONFIGURATION ==========
 
-# DEBUG: Log what origins are allowed
-print(f"✓ CORS configured with allowed origins: {allowed_origins}")
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "https://ayindetechnologies.com",
+    "https://www.ayindetechnologies.com",
+]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --- Routers ---
-app.include_router(auth.router)
-app.include_router(services.router)
-app.include_router(team.router)
-app.include_router(projects.router)
-app.include_router(courses.router)
-app.include_router(contact.router)
-app.include_router(captcha.router)
-app.include_router(payments.router)
-app.include_router(lessons.router)
+# Log CORS configuration
+print(f"✓ CORS configured with allowed origins: {ALLOWED_ORIGINS}")
 
+
+# ========== ROUTES ==========
 
 @app.get("/")
-def root():
+async def root():
+    """Health check endpoint"""
     return {
-        "message": "Welcome to Ayinde Technologies API", 
-        "version": "2.0.0", 
-        "status": "running",
-        "cors_origins": allowed_origins
+        "message": "Ayinde Technologies API",
+        "version": "1.0.0",
+        "status": "online"
     }
 
 
 @app.get("/health")
-def health():
+async def health():
+    """Health check for monitoring"""
     return {
         "status": "healthy",
-        "cors_origins": allowed_origins
+        "service": "Ayinde Technologies API"
     }
+
+
+# ========== ROUTER INCLUDES ==========
+
+app.include_router(auth.router)
+app.include_router(captcha.router)
+app.include_router(courses.router)
+app.include_router(services.router)
+app.include_router(team.router)
+app.include_router(projects.router)
+app.include_router(contact.router)
+app.include_router(lessons.router)
+app.include_router(payments.router)
+
+
+# ========== ERROR HANDLERS ==========
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Handle unexpected errors gracefully"""
+    return {
+        "error": "Internal server error",
+        "detail": str(exc)
+    }
+
+
+# ========== STARTUP EVENTS ==========
+
+@app.on_event("startup")
+async def startup_event():
+    """Run on application startup"""
+    print("🚀 Ayinde Technologies API starting up...")
+    print(f"📍 Environment: {os.getenv('SQUARE_ENVIRONMENT', 'development')}")
+    print("✅ All routers loaded successfully")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Run on application shutdown"""
+    print("👋 Ayinde Technologies API shutting down...")
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=int(os.getenv("PORT", 8000)), reload=True)
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)

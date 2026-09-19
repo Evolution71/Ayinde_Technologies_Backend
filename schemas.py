@@ -345,76 +345,60 @@ class LessonProgressResponse(LessonProgressBase):
 
 # ========== CAPTCHA SCHEMAS ==========
 
+class CaptchaGenerateResponse(BaseModel):
+    """Response when generating a new captcha - returns token and base64 image"""
+    token: str
+    image: str
+
 class CaptchaVerifyRequest(BaseModel):
+    """Request to verify a captcha answer"""
     token: str
     user_answer: Optional[str] = None
 
 class CaptchaVerifyResponse(BaseModel):
+    """Response when verifying a captcha answer"""
     valid: bool
     message: str
 
 
 # ========== SCHEMA ALIASES ==========
 # Comprehensive aliases for all routers
-# Maps various naming conventions used throughout the codebase
 
-# Service aliases
 ServiceOut = ServiceResponse
 ServiceDetail = ServiceResponse
-
-# Team aliases
 TeamMemberOut = TeamMemberResponse
 TeamMember = TeamMemberResponse
-
-# Project aliases
+TeamOut = TeamMemberResponse
 ProjectOut = ProjectResponse
 ProjectDetail = ProjectResponse
-
-# Course aliases
 CourseOut = CourseResponse
 CourseDetailOut = CourseResponse
 CourseDetailResponse = CourseResponse
 CoursesOut = CourseListResponse
 CourseListOut = CourseListResponse
 CourseDetail = CourseResponse
-
-# Enrollment aliases
 EnrollmentOut = EnrollmentResponse
 Enrollment = EnrollmentResponse
-
-# Payment aliases
 PaymentOut = PaymentResponse
 Payment = PaymentResponse
-
-# Lesson aliases
 LessonOut = LessonResponse
 LessonDetail = LessonResponse
 LessonDetailOut = LessonResponse
-
-# Contact aliases
 ContactMessageOut = ContactMessageResponse
 ContactResponse = ContactMessageResponse
 ContactMessage = ContactMessageResponse
 Contact = ContactMessageResponse
 ContactForm = ContactMessageResponse
 ContactOut = ContactMessageResponse
-
-# Lesson Progress aliases
 LessonProgressOut = LessonProgressResponse
 LessonProgress = LessonProgressResponse
-
-# Captcha aliases
 CaptchaOut = CaptchaVerifyResponse
 CaptchaVerify = CaptchaVerifyResponse
 Captcha = CaptchaVerifyResponse
-
-# Token aliases
 LoginOut = LoginResponse
 RegisterOut = AuthResponse
 UserOut = UserResponse
 User = UserResponse
-
-# Generic aliases
 DetailOut = UserResponse
 ListOut = CourseListResponse
 Out = UserResponse
