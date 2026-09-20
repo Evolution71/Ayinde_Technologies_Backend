@@ -94,7 +94,7 @@ async def list_courses(
 
 # ========== GET COURSE DETAIL ==========
 
-@router.get("/{course_id}", response_model=schemas.CourseDetailOut)
+@router.get("/{course_id}/", response_model=schemas.CourseDetailOut)
 async def get_course_detail(
     course_id: int,
     current_user: User = Depends(get_current_user),
@@ -197,7 +197,7 @@ async def get_course_detail(
 
 # ========== ENROLL IN COURSE ==========
 
-@router.post("/{course_id}/enroll")
+@router.post("/{course_id}/enroll/")
 async def enroll_in_course(
     course_id: int,
     current_user: User = Depends(get_current_user),
@@ -262,7 +262,7 @@ async def enroll_in_course(
 
 # ========== GET LESSON ==========
 
-@router.get("/{course_id}/lessons/{lesson_id}")
+@router.get("/{course_id}/lessons/{lesson_id}/")
 async def get_lesson(
     course_id: int,
     lesson_id: int,
@@ -316,7 +316,7 @@ async def get_lesson(
 
 # ========== MARK LESSON COMPLETE ==========
 
-@router.post("/{course_id}/lessons/{lesson_id}/complete")
+@router.post("/{course_id}/lessons/{lesson_id}/complete/")
 async def complete_lesson(
     course_id: int,
     lesson_id: int,
@@ -389,7 +389,7 @@ async def complete_lesson(
 
 # ========== GET COURSE PROGRESS ==========
 
-@router.get("/{course_id}/progress")
+@router.get("/{course_id}/progress/")
 async def get_course_progress(
     course_id: int,
     current_user: User = Depends(get_current_user),

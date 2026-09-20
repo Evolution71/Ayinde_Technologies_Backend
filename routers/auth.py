@@ -23,7 +23,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 # ========== REGISTER ==========
 
-@router.post("/register", response_model=schemas.AuthResponse)
+@router.post("/register/", response_model=schemas.AuthResponse)
 async def register(
     user_data: schemas.UserRegister,
     db: Session = Depends(get_db),
@@ -85,7 +85,7 @@ async def register(
 
 # ========== LOGIN ==========
 
-@router.post("/login", response_model=schemas.AuthResponse)
+@router.post("/login/", response_model=schemas.AuthResponse)
 async def login(
     user_data: schemas.UserLogin,
     db: Session = Depends(get_db),
@@ -142,7 +142,7 @@ async def login(
 
 # ========== GET CURRENT USER ==========
 
-@router.get("/me", response_model=schemas.UserResponse)
+@router.get("/me/", response_model=schemas.UserResponse)
 async def get_me(
     current_user: User = Depends(get_current_user),
 ):
@@ -163,7 +163,7 @@ async def get_me(
 
 # ========== LOGOUT ==========
 
-@router.post("/logout")
+@router.post("/logout/")
 async def logout(
     current_user: User = Depends(get_current_user),
 ):
