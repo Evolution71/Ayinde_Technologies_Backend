@@ -22,7 +22,8 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title="Ayinde Technologies API",
     description="Full-stack API for Ayinde Technologies platform",
-    version="1.0.0"
+    version="1.0.0",
+    redirect_slashes=False
 )
 
 # ========== CORS CONFIGURATION ==========
