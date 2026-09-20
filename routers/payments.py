@@ -65,7 +65,7 @@ def get_square_client():
 
 # ========== CREATE PAYMENT INTENT ==========
 
-@router.post("/create-intent")
+@router.post("/create-intent/")
 async def create_payment_intent(
     course_id: int,
     current_user: User = Depends(get_current_user),
@@ -198,7 +198,7 @@ async def create_payment_intent(
 
 # ========== VERIFY PAYMENT ==========
 
-@router.post("/verify")
+@router.post("/verify/")
 async def verify_payment(
     payment_id: int,
     square_payment_id: str,
@@ -330,7 +330,7 @@ async def verify_payment(
 
 # ========== GET PAYMENT STATUS ==========
 
-@router.get("/{payment_id}")
+@router.get("/{payment_id}/")
 async def get_payment_status(
     payment_id: int,
     current_user: User = Depends(get_current_user),
@@ -363,7 +363,7 @@ async def get_payment_status(
 
 # ========== SQUARE WEBHOOK ==========
 
-@router.post("/webhook")
+@router.post("/webhook/")
 async def handle_square_webhook(
     request: Request,
     db: Session = Depends(get_db),

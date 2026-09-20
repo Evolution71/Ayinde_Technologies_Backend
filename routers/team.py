@@ -28,7 +28,7 @@ async def get_team(db: Session = Depends(get_db)):
     return team_members
 
 
-@router.get("/{member_id}", response_model=schemas.TeamMemberOut)
+@router.get("/{member_id}/", response_model=schemas.TeamMemberOut)
 async def get_team_member(
     member_id: int,
     db: Session = Depends(get_db)

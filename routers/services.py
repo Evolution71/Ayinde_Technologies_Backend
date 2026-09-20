@@ -28,7 +28,7 @@ async def get_services(db: Session = Depends(get_db)):
     return services
 
 
-@router.get("/{service_id}", response_model=schemas.ServiceOut)
+@router.get("/{service_id}/", response_model=schemas.ServiceOut)
 async def get_service(
     service_id: int,
     db: Session = Depends(get_db)

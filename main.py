@@ -28,12 +28,20 @@ app = FastAPI(
 
 # ========== CORS CONFIGURATION ==========
 
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "https://ayindetechnologies.com",
-    "https://www.ayindetechnologies.com",
-]
+# Read from environment variable, with fallback to defaults
+ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+
+if ALLOWED_ORIGINS_ENV:
+    # Parse from env var (comma-separated, with proper whitespace stripping)
+    ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
+else:
+    # Fallback defaults
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:8000",
+        "https://ayindetechnologies.com",
+        "https://www.ayindetechnologies.com",
+    ]
 
 app.add_middleware(
     CORSMiddleware,

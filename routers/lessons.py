@@ -21,7 +21,7 @@ import schemas
 router = APIRouter(prefix="/api/lessons", tags=["lessons"])
 
 
-@router.get("/{lesson_id}", response_model=schemas.LessonOut)
+@router.get("/{lesson_id}/", response_model=schemas.LessonOut)
 async def get_lesson_detail(
     lesson_id: int,
     current_user: User = Depends(get_current_user),
@@ -68,7 +68,7 @@ async def get_lesson_detail(
     return schemas.LessonOut.from_attributes(lesson)
 
 
-@router.post("/{lesson_id}/progress")
+@router.post("/{lesson_id}/progress/")
 async def update_lesson_progress(
     lesson_id: int,
     time_spent: Optional[int] = 0,
@@ -148,7 +148,7 @@ async def update_lesson_progress(
     }
 
 
-@router.post("/{lesson_id}/complete")
+@router.post("/{lesson_id}/complete/")
 async def complete_lesson(
     lesson_id: int,
     current_user: User = Depends(get_current_user),

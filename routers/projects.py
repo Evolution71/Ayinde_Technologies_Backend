@@ -36,7 +36,7 @@ async def get_projects(
     return projects
 
 
-@router.get("/{project_id}", response_model=schemas.ProjectOut)
+@router.get("/{project_id}/", response_model=schemas.ProjectOut)
 async def get_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
