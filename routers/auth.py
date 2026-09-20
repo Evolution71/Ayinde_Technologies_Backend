@@ -4,7 +4,6 @@ Authentication router - login, register, logout, get current user.
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import timedelta
 
 from database import get_db
 from auth import (
@@ -65,11 +64,7 @@ async def register(
     db.refresh(new_user)
     
     # Generate token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": new_user.email},
-        expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": new_user.email})
     
     return {
         "access_token": access_token,
@@ -122,11 +117,7 @@ async def login(
         )
     
     # Generate token
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user.email},
-        expires_delta=access_token_expires
-    )
+    access_token = create_access_token(data={"sub": user.email})
     
     return {
         "access_token": access_token,
