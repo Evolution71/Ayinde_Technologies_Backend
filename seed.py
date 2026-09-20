@@ -57,60 +57,66 @@ def seed_database():
                     description="Learn Python basics from scratch. Perfect for beginners who want to start their programming journey.",
                     instructor="John Doe",
                     price=49.99,
-                    duration_hours=20,
+                    duration="4 weeks",
                     level="Beginner",
                     is_active=True,
-                    video_url="https://example.com/python-basics"
+                    icon="https://via.placeholder.com/300x200?text=Python+Fundamentals",
+                    currency="USD"
                 ),
                 Course(
                     title="Web Development with React",
                     description="Master React and build modern, interactive web applications. Learn components, hooks, and state management.",
                     instructor="Jane Smith",
                     price=79.99,
-                    duration_hours=30,
+                    duration="6 weeks",
                     level="Intermediate",
                     is_active=True,
-                    video_url="https://example.com/react-mastery"
+                    icon="https://via.placeholder.com/300x200?text=React",
+                    currency="USD"
                 ),
                 Course(
                     title="Data Science Masterclass",
                     description="Learn data science, machine learning, and AI. From data cleaning to model deployment.",
                     instructor="Mike Johnson",
                     price=99.99,
-                    duration_hours=40,
+                    duration="8 weeks",
                     level="Advanced",
                     is_active=True,
-                    video_url="https://example.com/data-science"
+                    icon="https://via.placeholder.com/300x200?text=Data+Science",
+                    currency="USD"
                 ),
                 Course(
                     title="Mobile App Development",
                     description="Build native iOS and Android applications. Learn mobile app design patterns and best practices.",
                     instructor="Sarah Lee",
                     price=89.99,
-                    duration_hours=35,
+                    duration="7 weeks",
                     level="Intermediate",
                     is_active=True,
-                    video_url="https://example.com/mobile-dev"
+                    icon="https://via.placeholder.com/300x200?text=Mobile+Dev",
+                    currency="USD"
                 ),
                 Course(
                     title="Advanced JavaScript",
                     description="Deep dive into JavaScript ES6+, async programming, and modern web development patterns.",
                     instructor="Alex Brown",
                     price=69.99,
-                    duration_hours=25,
+                    duration="5 weeks",
                     level="Advanced",
                     is_active=True,
-                    video_url="https://example.com/advanced-js"
+                    icon="https://via.placeholder.com/300x200?text=JavaScript",
+                    currency="USD"
                 ),
                 Course(
                     title="DevOps & Cloud Deployment",
                     description="Learn Docker, Kubernetes, and cloud platforms. Master CI/CD pipelines and infrastructure as code.",
                     instructor="Chris Wilson",
                     price=89.99,
-                    duration_hours=30,
+                    duration="6 weeks",
                     level="Advanced",
                     is_active=True,
-                    video_url="https://example.com/devops"
+                    icon="https://via.placeholder.com/300x200?text=DevOps",
+                    currency="USD"
                 ),
             ]
             for course in courses:
