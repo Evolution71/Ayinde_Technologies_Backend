@@ -325,3 +325,11 @@ class CaptchaResponse(BaseModel):
 
 class CaptchaOut(CaptchaResponse):
     pass
+
+class CaptchaGenerateResponse(BaseModel):
+    """Response when generating a new captcha challenge"""
+    captcha_id: str
+    captcha_image: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
