@@ -333,3 +333,12 @@ class CaptchaGenerateResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+class CaptchaVerifyResponse(BaseModel):
+    """Response when verifying a captcha answer"""
+    success: bool
+    message: Optional[str] = None
+    score: Optional[float] = None
+    
+    class Config:
+        from_attributes = True
