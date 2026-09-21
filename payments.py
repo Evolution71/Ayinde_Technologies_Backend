@@ -15,15 +15,13 @@ async def create_payment_intent(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Create payment intent - NO Pydantic validation"""
+    """Create payment intent - NO query params, reads JSON body"""
     try:
-        # Get raw JSON
         body = await request.json()
         course_id = body.get("course_id")
         amount = body.get("amount", 0)
         currency = body.get("currency", "USD")
         
-        # Validate
         if not course_id:
             raise HTTPException(status_code=400, detail="course_id required")
         
@@ -31,7 +29,18 @@ async def create_payment_intent(
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
-        # Create payment
+        if not course.is_active:
+            raise HTTPException(status_code=400, detail="Course not active")
+        
+        existing = db.query(CourseEnrollment).filter(
+            CourseEnrollment.user_id == current_user.id,
+            CourseEnrollment.course_id == course_id,
+            CourseEnrollment.status == "active"
+        ).first()
+        
+        if existing:
+            raise HTTPException(status_code=400, detail="Already enrolled")
+        
         final_amount = float(amount) if amount > 0 else float(course.price or 0)
         payment = Payment(
             user_id=current_user.id,
@@ -66,7 +75,7 @@ async def verify_payment(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Verify payment - NO Pydantic validation"""
+    """Verify payment - NO query params, reads JSON body"""
     try:
         body = await request.json()
         payment_id = body.get("payment_id")
@@ -86,11 +95,9 @@ async def verify_payment(
         course_id = payment.payment_data.get("course_id")
         course = db.query(Course).filter(Course.id == course_id).first()
         
-        # Mark completed
         payment.status = "completed"
         payment.verified_at = datetime.utcnow()
         
-        # Create enrollment
         enrollment = db.query(CourseEnrollment).filter(
             CourseEnrollment.user_id == current_user.id,
             CourseEnrollment.course_id == course_id
