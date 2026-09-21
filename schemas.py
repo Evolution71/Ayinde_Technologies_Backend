@@ -157,6 +157,10 @@ class CourseListResponse(BaseModel):
 class CourseDetailResponse(CourseResponse):
     pass
 
+class CourseDetailOut(CourseResponse):
+    """Alias for CourseDetailResponse - used by courses.py router"""
+    pass
+
 class CourseOut(CourseResponse):
     pass
 
