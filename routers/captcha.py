@@ -1,151 +1,134 @@
 """
-Captcha router - generate and verify captcha challenges.
+Captcha router for Ayinde Technologies API.
+Generates and verifies simple text-based captchas for form protection.
 """
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 import random
 import string
-from io import BytesIO
-import base64
-from PIL import Image, ImageDraw, ImageFont
-
-from fastapi import APIRouter, HTTPException, status
-from sqlalchemy.orm import Session
-
 from database import get_db
-import schemas
+from schemas import CaptchaGenerateResponse, CaptchaVerifyRequest, CaptchaVerifyResponse
 
 router = APIRouter(prefix="/api/captcha", tags=["captcha"])
 
-# Store active captchas temporarily (in production, use Redis or DB)
-active_captchas = {}
+# Simple in-memory captcha storage (in production, use Redis or database)
+captcha_store = {}
 
+def generate_captcha_id():
+    """Generate a unique captcha ID"""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
 
-def generate_captcha_image(text: str) -> str:
-    """Generate a captcha image and return as base64"""
-    width, height = 200, 100
+def generate_captcha_challenge():
+    """Generate a simple math challenge"""
+    num1 = random.randint(1, 20)
+    num2 = random.randint(1, 20)
+    operation = random.choice(['+', '-'])
     
-    # Create image with white background
-    img = Image.new('RGB', (width, height), color='white')
-    draw = ImageDraw.Draw(img)
+    if operation == '+':
+        answer = num1 + num2
+    else:
+        answer = num1 - num2
     
-    # Add text
-    try:
-        font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-    except OSError:
-        # Fallback to default font
-        font = ImageFont.load_default()
-    
-    # Add some noise
-    for _ in range(50):
-        x = random.randint(0, width)
-        y = random.randint(0, height)
-        draw.point((x, y), fill='gray')
-    
-    # Draw text
-    text_bbox = draw.textbbox((0, 0), text, font=font)
-    text_width = text_bbox[2] - text_bbox[0]
-    text_height = text_bbox[3] - text_bbox[1]
-    x = (width - text_width) // 2
-    y = (height - text_height) // 2
-    draw.text((x, y), text, font=font, fill='black')
-    
-    # Convert to base64
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    img_str = base64.b64encode(buffer.getvalue()).decode()
-    
-    return f"data:image/png;base64,{img_str}"
+    challenge_text = f"What is {num1} {operation} {num2}?"
+    return challenge_text, str(answer)
 
-
-# ========== GET CAPTCHA ==========
-
-@router.get("/", response_model=schemas.CaptchaGenerateResponse)
-async def get_captcha():
+@router.get("/", response_model=CaptchaGenerateResponse)
+async def generate_captcha():
     """
     Generate a new captcha challenge.
-    
-    Returns:
-    - token: Unique identifier for this captcha
-    - image: Base64 encoded PNG image of the captcha
-    
-    Client should:
-    1. Display the image to the user
-    2. Ask user to enter the text they see
-    3. Send token + user_answer to /api/captcha/verify/
+    Returns a captcha ID and challenge text.
+    The client must solve the challenge and send back the answer.
     """
-    
-    # Generate random 6-character alphanumeric string
-    captcha_text = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
-    
-    # Generate unique token
-    captcha_token = ''.join(random.choices(string.ascii_lowercase + string.digits, k=32))
-    
-    # Generate image
-    captcha_image = generate_captcha_image(captcha_text)
-    
-    # Store in memory (in production, use Redis/cache with TTL)
-    active_captchas[captcha_token] = {
-        'answer': captcha_text.lower(),
-        'attempts': 0,
-    }
-    
-    return {
-        "token": captcha_token,
-        "image": captcha_image,
-    }
+    try:
+        captcha_id = generate_captcha_id()
+        challenge_text, answer = generate_captcha_challenge()
+        
+        # Store captcha with 10 minute expiry
+        captcha_store[captcha_id] = {
+            'challenge': challenge_text,
+            'answer': answer,
+            'created_at': datetime.utcnow(),
+            'expires_at': datetime.utcnow() + timedelta(minutes=10),
+            'attempts': 0
+        }
+        
+        return {
+            "captcha_id": captcha_id,
+            "captcha_image": challenge_text  # In this simple version, return the text
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate captcha: {str(e)}")
 
 
-# ========== VERIFY CAPTCHA ==========
-
-@router.post("/verify/", response_model=schemas.CaptchaVerifyResponse)
-async def verify_captcha(request: schemas.CaptchaVerifyRequest):
+@router.post("/verify/", response_model=CaptchaVerifyResponse)
+async def verify_captcha(request: CaptchaVerifyRequest):
     """
     Verify a captcha answer.
-    
-    Request:
-    - token: Token from the captcha generation endpoint
-    - user_answer: Text the user entered from the image
-    
-    Returns:
-    - valid: True if answer is correct
-    - message: Success or error message
+    Returns success: true if answer is correct.
     """
+    try:
+        captcha_id = request.captcha_id
+        user_answer = request.captcha_answer.strip()
+        
+        # Check if captcha exists
+        if captcha_id not in captcha_store:
+            return {
+                "success": False,
+                "message": "Captcha expired or invalid",
+                "score": 0.0
+            }
+        
+        captcha_data = captcha_store[captcha_id]
+        
+        # Check if captcha has expired
+        if datetime.utcnow() > captcha_data['expires_at']:
+            del captcha_store[captcha_id]
+            return {
+                "success": False,
+                "message": "Captcha expired",
+                "score": 0.0
+            }
+        
+        # Check if too many attempts
+        captcha_data['attempts'] += 1
+        if captcha_data['attempts'] > 5:
+            del captcha_store[captcha_id]
+            return {
+                "success": False,
+                "message": "Too many attempts",
+                "score": 0.0
+            }
+        
+        # Verify answer
+        if user_answer == captcha_data['answer']:
+            # Clean up used captcha
+            del captcha_store[captcha_id]
+            return {
+                "success": True,
+                "message": "Captcha verified successfully",
+                "score": 1.0
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"Incorrect answer. Attempts: {captcha_data['attempts']}/5",
+                "score": 0.0
+            }
     
-    token = request.token
-    user_answer = (request.user_answer or '').lower().strip()
-    
-    # Check if token exists
-    if token not in active_captchas:
+    except Exception as e:
         return {
-            "valid": False,
-            "message": "Invalid or expired captcha token"
+            "success": False,
+            "message": f"Verification failed: {str(e)}",
+            "score": 0.0
         }
-    
-    captcha_data = active_captchas[token]
-    correct_answer = captcha_data['answer']
-    
-    # Check if too many attempts
-    if captcha_data['attempts'] >= 3:
-        del active_captchas[token]
-        return {
-            "valid": False,
-            "message": "Too many attempts. Please request a new captcha."
-        }
-    
-    # Increment attempts
-    captcha_data['attempts'] += 1
-    
-    # Verify answer
-    if user_answer == correct_answer:
-        # Remove used captcha
-        del active_captchas[token]
-        return {
-            "valid": True,
-            "message": "Captcha verified successfully"
-        }
-    else:
-        remaining = 3 - captcha_data['attempts']
-        return {
-            "valid": False,
-            "message": f"Incorrect answer. {remaining} attempts remaining."
-        }
+
+
+@router.get("/health/")
+async def captcha_health():
+    """Health check endpoint for captcha service"""
+    return {
+        "status": "healthy",
+        "active_captchas": len(captcha_store)
+    }
