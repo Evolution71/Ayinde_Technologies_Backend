@@ -311,3 +311,10 @@ class CaptchaResponse(BaseModel):
 
 class CaptchaOut(CaptchaResponse):
     pass
+
+
+# ========== MISSING SCHEMAS - Added for router compatibility ==========
+
+class ContactForm(ContactRequest):
+    """Alias for ContactRequest"""
+    pass
