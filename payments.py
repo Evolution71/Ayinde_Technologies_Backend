@@ -1,5 +1,5 @@
 """
-Square payment processing - SIMPLE VERSION (no schema validation)
+Square payment processing for Ayinde Technologies courses.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Body
@@ -37,7 +37,7 @@ async def create_payment_intent(
         # Get course
         course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
-            raise HTTPException(status_code=404, detail=f"Course not found")
+            raise HTTPException(status_code=404, detail="Course not found")
         
         if not course.is_active:
             raise HTTPException(status_code=400, detail="Course is not active")
@@ -56,13 +56,20 @@ async def create_payment_intent(
         final_amount = float(amount) if amount > 0 else float(course.price or 0)
         
         # Create payment record
+        # IMPORTANT: course_id goes in payment_data JSON field, not as direct column!
         payment = Payment(
             user_id=current_user.id,
-            course_id=course_id,
             amount=final_amount,
             currency=currency,
             status="pending",
-            payment_method="square"
+            payment_method="square",
+            payment_data={
+                "course_id": course_id,
+                "course_title": course.title,
+                "user_email": current_user.email,
+                "user_name": current_user.name
+            },
+            expires_at=datetime.utcnow() + timedelta(hours=24)
         )
         db.add(payment)
         db.commit()
@@ -80,7 +87,7 @@ async def create_payment_intent(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 # ========== VERIFY PAYMENT ==========
@@ -114,8 +121,12 @@ async def verify_payment(
         if payment.status != "pending":
             raise HTTPException(status_code=400, detail="Payment already processed")
         
-        # Get course
-        course = db.query(Course).filter(Course.id == payment.course_id).first()
+        # Get course from payment_data
+        course_id = payment.payment_data.get("course_id") if payment.payment_data else None
+        if not course_id:
+            raise HTTPException(status_code=400, detail="Invalid payment data")
+        
+        course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
             raise HTTPException(status_code=404, detail="Course not found")
         
@@ -129,13 +140,13 @@ async def verify_payment(
         # Create or update enrollment
         enrollment = db.query(CourseEnrollment).filter(
             CourseEnrollment.user_id == current_user.id,
-            CourseEnrollment.course_id == payment.course_id
+            CourseEnrollment.course_id == course_id
         ).first()
         
         if not enrollment:
             enrollment = CourseEnrollment(
                 user_id=current_user.id,
-                course_id=payment.course_id,
+                course_id=course_id,
                 status="active",
                 access_expires_at=datetime.utcnow() + timedelta(days=365)
             )
@@ -144,13 +155,16 @@ async def verify_payment(
             enrollment.status = "active"
             enrollment.access_expires_at = datetime.utcnow() + timedelta(days=365)
         
+        # Link payment to enrollment
+        payment.enrollment_id = enrollment.id
+        
         db.commit()
         
         return {
             "success": True,
             "message": f"Payment verified! Access to {course.title} is now active.",
             "payment_id": payment.id,
-            "course_id": payment.course_id,
+            "course_id": course_id,
             "enrollment_id": enrollment.id
         }
     
@@ -158,7 +172,7 @@ async def verify_payment(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
 # ========== GET PAYMENT STATUS ==========
@@ -182,8 +196,8 @@ async def get_payment_status(
         "status": payment.status,
         "amount": payment.amount,
         "currency": payment.currency,
-        "created_at": payment.created_at,
-        "verified_at": payment.verified_at,
+        "created_at": payment.created_at.isoformat() if payment.created_at else None,
+        "verified_at": payment.verified_at.isoformat() if payment.verified_at else None,
     }
 
 
