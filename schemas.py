@@ -334,6 +334,11 @@ class CaptchaGenerateResponse(BaseModel):
     class Config:
         from_attributes = True
 
+class CaptchaVerifyRequest(BaseModel):
+    """Request to verify a captcha answer"""
+    captcha_id: str
+    captcha_answer: str
+
 class CaptchaVerifyResponse(BaseModel):
     """Response when verifying a captcha answer"""
     success: bool
