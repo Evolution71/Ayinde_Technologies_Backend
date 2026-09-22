@@ -74,10 +74,14 @@ async def create_payment_intent(
         # Use provided amount or fall back to course price
         final_amount = float(amount) if amount > 0 else float(course.price or 0)
         
+        # Generate transaction reference
+        tx_ref = f"PAY-{current_user.id}-{course_id}-{uuid.uuid4().hex[:8].upper()}"
+        
         # Create payment record with course_id set explicitly
         payment = Payment(
             user_id=current_user.id,
-            course_id=course_id,  # ← ADD THIS
+            course_id=course_id,
+            tx_ref=tx_ref,  # ← ADD THIS
             amount=final_amount,
             currency=currency,
             status="pending",

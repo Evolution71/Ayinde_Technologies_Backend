@@ -145,8 +145,11 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)  # ← ADDED THIS
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=True)
+    
+    # Transaction Reference
+    tx_ref = Column(String, unique=True, index=True, nullable=False)  # ← ADDED THIS
     
     # Square Transaction Fields
     square_payment_id = Column(String, unique=True, index=True, nullable=True)  # Square payment ID (nonce)
@@ -227,5 +230,4 @@ class ContactMessage(Base):
     message = Column(Text, nullable=False)
     ip_address = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
-    read = Column(Boolean, default=False)
-    
+    read = Column(Boolean, default=False)  
