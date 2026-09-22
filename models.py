@@ -145,6 +145,7 @@ class Payment(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)  # ← ADDED THIS
     enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"), nullable=True)
     
     # Square Transaction Fields
@@ -227,3 +228,4 @@ class ContactMessage(Base):
     ip_address = Column(String, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     read = Column(Boolean, default=False)
+    
