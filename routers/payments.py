@@ -95,10 +95,11 @@ async def create_payment_intent(
         
         print(f"[payments] ✅ Payment created: id={payment.id}, amount={final_amount}")
         
-        # Return success response
+        # For now, return a test token (Square integration comes later)
+        # In production, generate real client token from Square API
         return {
             "success": True,
-            "client_token": str(uuid.uuid4()),
+            "client_token": "test_token_" + str(uuid.uuid4()),  # Test mode
             "payment_id": payment.id,
             "amount": final_amount,
             "currency": currency
