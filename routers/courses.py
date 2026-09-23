@@ -9,6 +9,7 @@ Features:
 
 Endpoints:
 - GET /api/courses - List all courses
+- GET /api/courses/me/enrollments - Get user's enrolled courses (NEW)
 - GET /api/courses/{id} - Get course details (requires enrollment)
 - POST /api/courses/{id}/enroll - Start free trial
 - GET /api/courses/{id}/lessons/{lesson_id} - Get lesson
@@ -27,6 +28,38 @@ from models import User, Course, CourseEnrollment, Lesson, LessonProgress
 import schemas
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
+
+
+# ========== GET USER'S ENROLLMENTS ==========
+
+@router.get("/me/enrollments/")
+async def get_my_enrollments(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get list of courses the current user is enrolled in.
+    Returns course IDs for frontend to mark as "✅ Enrolled"
+    
+    Returns: List of enrolled course IDs with status
+    """
+    enrollments = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.status.in_(["trial", "active"])
+    ).all()
+    
+    return {
+        "success": True,
+        "enrollments": [
+            {
+                "course_id": e.course_id,
+                "status": e.status,
+                "enrolled_at": e.enrolled_at,
+                "trial_ends_at": e.trial_ends_at
+            }
+            for e in enrollments
+        ]
+    }
 
 
 # ========== LIST COURSES ==========
