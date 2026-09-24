@@ -95,3 +95,52 @@ class SubscriptionCharge(Base):
     next_retry_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# ========== MISSING MODELS ADDED BELOW ==========
+
+class Service(Base):
+    """Services offered by Ayinde Technologies"""
+    __tablename__ = "services"
+    id = Column(Integer, primary_key=True)
+    name = Column(String, index=True)
+    description = Column(Text)
+    icon = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class TeamMember(Base):
+    """Team members"""
+    __tablename__ = "team_members"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    role = Column(String)
+    bio = Column(Text, nullable=True)
+    image = Column(String, nullable=True)
+    expertise = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Project(Base):
+    """Portfolio projects"""
+    __tablename__ = "projects"
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    client = Column(String, nullable=True)
+    category = Column(String, nullable=True)
+    description = Column(Text)
+    image = Column(String, nullable=True)
+    technologies = Column(String, nullable=True)
+    results = Column(Text, nullable=True)
+    app_url = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ContactMessage(Base):
+    """Contact form submissions"""
+    __tablename__ = "contact_messages"
+    id = Column(Integer, primary_key=True)
+    name = Column(String)
+    email = Column(String)
+    subject = Column(String)
+    message = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
