@@ -12,22 +12,8 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, default="")
     email = Column(String(255), unique=True, index=True, nullable=False)
-    password = Column(String(255), nullable=False)  # ✅ PASSWORD FIELD - WAS MISSING
+    password = Column(String(255), nullable=False)  # ✅ PASSWORD FIELD
     created_at = Column(DateTime, default=datetime.utcnow)
-
-# ========== ENROLLMENT MODEL ==========
-class Enrollment(Base):
-    __tablename__ = "enrollments"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    status = Column(String(50), default="trial")  # 'trial', 'active', 'expired', 'payment_failed'
-    trial_ends_at = Column(DateTime, nullable=True)
-    access_expires_at = Column(DateTime, nullable=True)
-    payment_method_id = Column(String(255), nullable=True)  # Square/payment provider token
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # ========== COURSE MODEL ==========
 class Course(Base):
@@ -45,6 +31,20 @@ class Course(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== COURSE ENROLLMENT MODEL (Routers expect this name) ==========
+class CourseEnrollment(Base):
+    __tablename__ = "enrollments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    status = Column(String(50), default="trial")  # 'trial', 'active', 'expired', 'payment_failed'
+    trial_ends_at = Column(DateTime, nullable=True)
+    access_expires_at = Column(DateTime, nullable=True)
+    payment_method_id = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 # ========== LESSON MODEL ==========
 class Lesson(Base):
     __tablename__ = "lessons"
@@ -53,10 +53,22 @@ class Lesson(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    content = Column(Text)  # Lesson body/markdown
+    content = Column(Text)
     video_url = Column(String(255), nullable=True)
     order = Column(Integer, default=0)
     is_free = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ========== LESSON PROGRESS MODEL (Routers expect this name) ==========
+class LessonProgress(Base):
+    __tablename__ = "lesson_progress"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
+    is_completed = Column(Boolean, default=False)
+    progress_percentage = Column(Float, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -81,7 +93,7 @@ class Captcha(Base):
     __tablename__ = "captchas"
     
     id = Column(String(36), primary_key=True, index=True)
-    challenge = Column(String(10), nullable=False)  # The correct answer
+    challenge = Column(String(10), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     expires_at = Column(DateTime, nullable=False)
 
@@ -119,7 +131,7 @@ class Project(Base):
     category = Column(String(100))
     description = Column(Text)
     image = Column(String(255), nullable=True)
-    technologies = Column(Text)  # Comma-separated or JSON
+    technologies = Column(Text)
     results = Column(Text)
     app_url = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
