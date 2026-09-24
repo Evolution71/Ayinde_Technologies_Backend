@@ -1,48 +1,29 @@
-"""
-Main FastAPI application for Ayinde Technologies.
-Includes CORS, middleware, and all routers.
-"""
-
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import os
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Import database and routers
-from database import Base, engine, get_db
+from database import Base, engine
 from routers import auth, courses, services, team, projects, contact, lessons, payments, captcha
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Initialize FastAPI app
-app = FastAPI(
-    title="Ayinde Technologies API",
-    description="Full-stack API for Ayinde Technologies platform",
-    version="1.0.0",
-    redirect_slashes=False
-)
+app = FastAPI(title="Ayinde Technologies API", version="1.0.0")
 
 # ========== CORS CONFIGURATION ==========
+# Get allowed origins from environment, with defaults for local + production
+ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,https://ayindetechnologies.com').split(',')
 
-# Read from environment variable, with fallback to defaults
-ALLOWED_ORIGINS_ENV = os.getenv("ALLOWED_ORIGINS", "")
+# Clean up whitespace
+ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS]
 
-if ALLOWED_ORIGINS_ENV:
-    # Parse from env var (comma-separated, with proper whitespace stripping)
-    ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS_ENV.split(",") if origin.strip()]
-else:
-    # Fallback defaults
-    ALLOWED_ORIGINS = [
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "https://ayindetechnologies.com",
-        "https://www.ayindetechnologies.com",
-    ]
+print(f"✅ CORS enabled for: {ALLOWED_ORIGINS}")
 
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
@@ -51,35 +32,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Log CORS configuration
-print(f"✓ CORS configured with allowed origins: {ALLOWED_ORIGINS}")
-
-
 # ========== ROUTES ==========
-
-@app.get("/")
-async def root():
-    """Health check endpoint"""
-    return {
-        "message": "Ayinde Technologies API",
-        "version": "1.0.0",
-        "status": "online"
-    }
-
-
-@app.get("/health")
-async def health():
-    """Health check for monitoring"""
-    return {
-        "status": "healthy",
-        "service": "Ayinde Technologies API"
-    }
-
-
-# ========== ROUTER INCLUDES ==========
-
 app.include_router(auth.router)
-app.include_router(captcha.router)
 app.include_router(courses.router)
 app.include_router(services.router)
 app.include_router(team.router)
@@ -87,34 +41,33 @@ app.include_router(projects.router)
 app.include_router(contact.router)
 app.include_router(lessons.router)
 app.include_router(payments.router)
+app.include_router(captcha.router)
 
-
-# ========== ERROR HANDLERS ==========
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Handle unexpected errors gracefully"""
+# ========== HEALTH CHECK ==========
+@app.get("/health")
+def health_check():
     return {
-        "error": "Internal server error",
-        "detail": str(exc)
+        "status": "healthy",
+        "message": "✅ Application startup complete"
     }
 
-
-# ========== STARTUP EVENTS ==========
-
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("🚀 Ayinde Technologies API starting up...")
-    print(f"📍 Environment: {os.getenv('SQUARE_ENVIRONMENT', 'development')}")
-    print("✅ All routers loaded successfully")
-
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Run on application shutdown"""
-    print("👋 Ayinde Technologies API shutting down...")
-
+@app.get("/")
+def read_root():
+    return {
+        "message": "Ayinde Technologies API",
+        "version": "1.0.0",
+        "endpoints": [
+            "/api/auth",
+            "/api/courses",
+            "/api/services",
+            "/api/team",
+            "/api/projects",
+            "/api/contact",
+            "/api/lessons",
+            "/api/payments",
+            "/api/captcha"
+        ]
+    }
 
 if __name__ == "__main__":
     import uvicorn
