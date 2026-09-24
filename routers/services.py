@@ -16,7 +16,7 @@ async def create_service_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create and process a premium service order"""
+    """Create and process a premium service orders"""
     try:
         body = await request.json()
         
