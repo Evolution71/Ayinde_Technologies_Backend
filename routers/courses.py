@@ -272,11 +272,7 @@ async def enroll_in_course(
     trial_days = course.trial_duration_days or 30
     enrollment = CourseEnrollment(
         user_id=current_user.id,
-        course_id=course_id,
-        status="trial",
-        enrolled_at=datetime.utcnow(),
-        trial_ends_at=datetime.utcnow() + timedelta(days=trial_days),
-        progress_percentage=0.0
+        course_id=course_id
     )
     
     db.add(enrollment)
