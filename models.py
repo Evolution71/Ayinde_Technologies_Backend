@@ -193,7 +193,7 @@ class ServiceOrder(Base):
     cancellation_reason = Column(Text, nullable=True)
     
     # Additional data
-    metadata = Column(JSON, default=dict)  # Stores features, IP, user agent, etc.
+    order_metadata = Column(JSON, default=dict)  # Stores features, IP, user agent, etc.
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -140,7 +140,7 @@ async def create_service_order(
             payment_source_id=source_id,
             transaction_id=f"SVC-{current_user.id}-{uuid.uuid4().hex[:8].upper()}",
             # Metadata
-            metadata={
+            order_metadata={
                 "features": body.get("features", []),
                 "ip_address": request.client.host if request.client else "",
                 "user_agent": request.headers.get("user-agent", "")
@@ -325,3 +325,54 @@ async def cancel_service_order(
         "order_id": order.id
     }
 
+
+# ========== DATABASE MODEL ==========
+# Add this to models.py:
+
+"""
+class ServiceOrder(Base):
+    '''Service purchase order model'''
+    __tablename__ = "service_orders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Service details
+    tier = Column(String(50), nullable=False)  # website, application, supreme
+    tier_name = Column(String(255), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    payment_option = Column(String(50))  # monthly, annual, threeyear, halfdown
+    discount_percent = Column(Integer, default=0)
+    period = Column(String(100))  # /month, /2 years, /3 years, etc.
+    
+    # Billing info
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=True)
+    company = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=False)
+    country = Column(String(2), default="US")
+    
+    # Service dates
+    status = Column(String(50), default="active")  # active, expired, cancelled
+    service_starts_at = Column(DateTime, default=datetime.utcnow)
+    service_ends_at = Column(DateTime, nullable=False)
+    
+    # Payment
+    payment_status = Column(String(50), default="pending")  # pending, completed, failed, refunded
+    payment_method = Column(String(50), default="square")
+    payment_source_id = Column(String(255), nullable=True)
+    transaction_id = Column(String(255), unique=True, nullable=True)
+    payment_completed_at = Column(DateTime, nullable=True)
+    
+    # Cancellation
+    cancelled_at = Column(DateTime, nullable=True)
+    
+    # Metadata
+    order_metadata = Column(JSON, default={})
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+"""
