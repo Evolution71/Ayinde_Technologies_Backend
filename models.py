@@ -44,6 +44,9 @@ class CourseEnrollment(Base):
     status = Column(String(50), default="trial")  # 'trial', 'active', 'expired', 'payment_failed'
     trial_ends_at = Column(DateTime, nullable=True)
     access_expires_at = Column(DateTime, nullable=True)
+    enrolled_at = Column(DateTime, default=datetime.utcnow)  # When enrollment started
+    progress_percentage = Column(Float, default=0)  # Overall course progress
+    last_accessed_at = Column(DateTime, nullable=True)  # Last time accessed
     payment_method_id = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -56,10 +59,14 @@ class Lesson(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    content = Column(Text)
+    content_html = Column(Text, nullable=True)  # HTML content
     video_url = Column(String(255), nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
     order = Column(Integer, default=0)
-    is_free = Column(Boolean, default=False)
+    resources = Column(JSON, nullable=True)  # Store resources as JSON
+    has_quiz = Column(Boolean, default=False)
+    quiz_data = Column(JSON, nullable=True)  # Store quiz data as JSON
+    is_published = Column(Boolean, default=False)  # ✅ REQUIRED BY ROUTER
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -72,6 +79,10 @@ class LessonProgress(Base):
     lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
     is_completed = Column(Boolean, default=False)
     progress_percentage = Column(Float, default=0)
+    time_spent_seconds = Column(Integer, default=0)  # Track time spent
+    quiz_score = Column(Float, nullable=True)  # Quiz score if completed
+    completed_at = Column(DateTime, nullable=True)  # When lesson was completed
+    last_accessed_at = Column(DateTime, nullable=True)  # Last time accessed
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
