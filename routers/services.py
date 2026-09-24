@@ -5,22 +5,55 @@ import uuid
 
 from database import get_db
 from auth import get_current_user
-from models import User, ServiceOrder
+from models import User, Service, ServiceOrder
 
 router = APIRouter(prefix="/api/services", tags=["services"])
 
 
+# GET all services - NO AUTH REQUIRED
+@router.get("/")
+async def get_services(db: Session = Depends(get_db)):
+    """Get all available services"""
+    services = db.query(Service).all()
+    return [
+        {
+            "id": s.id,
+            "name": s.name,
+            "description": s.description,
+            "icon": s.icon,
+            "created_at": s.created_at.isoformat() if s.created_at else None
+        }
+        for s in services
+    ]
+
+
+# GET single service - NO AUTH REQUIRED
+@router.get("/{service_id}/")
+async def get_service(service_id: int, db: Session = Depends(get_db)):
+    """Get a specific service"""
+    service = db.query(Service).filter(Service.id == service_id).first()
+    if not service:
+        raise HTTPException(status_code=404, detail="Service not found")
+    return {
+        "id": service.id,
+        "name": service.name,
+        "description": service.description,
+        "icon": service.icon,
+        "created_at": service.created_at.isoformat() if service.created_at else None
+    }
+
+
+# POST purchase - AUTH REQUIRED
 @router.post("/purchase/")
 async def create_service_order(
     request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create and process a premium service orders"""
+    """Create and process a premium service order"""
     try:
         body = await request.json()
         
-        # Extract fields
         tier = body.get("tier")
         tier_name = body.get("tierName")
         amount = float(body.get("amount", 0))
@@ -30,7 +63,6 @@ async def create_service_order(
         period = body.get("period")
         source_id = body.get("sourceId")
         
-        # Billing info
         full_name = body.get("fullName")
         email = body.get("email")
         phone = body.get("phone", "")
@@ -38,20 +70,12 @@ async def create_service_order(
         postal_code = body.get("postalCode")
         country = body.get("country", "US")
         
-        # Validate
         if not tier or not amount or not source_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Missing required fields"
-            )
+            raise HTTPException(status_code=400, detail="Missing required fields")
         
         if amount <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Amount must be greater than 0"
-            )
+            raise HTTPException(status_code=400, detail="Amount must be greater than 0")
         
-        # Calculate service end date based on payment option
         service_starts_at = datetime.utcnow()
         
         if payment_option == "monthly":
@@ -65,7 +89,6 @@ async def create_service_order(
         else:
             service_ends_at = service_starts_at + timedelta(days=30)
         
-        # Create order
         order = ServiceOrder(
             user_id=current_user.id,
             tier=tier,
@@ -99,8 +122,6 @@ async def create_service_order(
         db.commit()
         db.refresh(order)
         
-        # TODO: Process payment via Square API
-        # For now, mark as completed
         order.payment_status = "completed"
         order.payment_completed_at = datetime.utcnow()
         db.commit()
@@ -120,10 +141,7 @@ async def create_service_order(
         }
     
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/orders/")
@@ -166,10 +184,7 @@ async def get_order(
     ).first()
     
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
+        raise HTTPException(status_code=404, detail="Order not found")
     
     return {
         "id": order.id,
@@ -199,22 +214,13 @@ async def cancel_order(
     ).first()
     
     if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Order not found"
-        )
+        raise HTTPException(status_code=404, detail="Order not found")
     
     if order.status == "cancelled":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Order already cancelled"
-        )
+        raise HTTPException(status_code=400, detail="Order already cancelled")
     
     order.status = "cancelled"
     order.cancelled_at = datetime.utcnow()
     db.commit()
     
-    return {
-        "success": True,
-        "message": "Order cancelled successfully"
-    }
+    return {"success": True, "message": "Order cancelled successfully"}
