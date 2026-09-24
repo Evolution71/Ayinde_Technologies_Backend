@@ -1,146 +1,137 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text
-from sqlalchemy.orm import relationship
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime, timedelta
+from datetime import datetime
+import enum
 
 Base = declarative_base()
 
+# ========== USER MODEL ==========
 class User(Base):
     __tablename__ = "users"
-    id = Column(Integer, primary_key=True)
-    email = Column(String, unique=True)
-    password = Column(String)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False, default="")
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    password = Column(String(255), nullable=False)  # ✅ PASSWORD FIELD - WAS MISSING
     created_at = Column(DateTime, default=datetime.utcnow)
-    enrollments = relationship("CourseEnrollment", back_populates="user")
-    payments = relationship("Payment", back_populates="user")
 
+# ========== ENROLLMENT MODEL ==========
+class Enrollment(Base):
+    __tablename__ = "enrollments"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    status = Column(String(50), default="trial")  # 'trial', 'active', 'expired', 'payment_failed'
+    trial_ends_at = Column(DateTime, nullable=True)
+    access_expires_at = Column(DateTime, nullable=True)
+    payment_method_id = Column(String(255), nullable=True)  # Square/payment provider token
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ========== COURSE MODEL ==========
 class Course(Base):
     __tablename__ = "courses"
-    id = Column(Integer, primary_key=True)
-    title = Column(String)
-    description = Column(String)
-    price = Column(Float)
-    currency = Column(String, default="USD")
-    level = Column(String)
-    duration = Column(String)
-    instructor = Column(String)
-    icon = Column(String, nullable=True)
-    trial_duration_days = Column(Integer, default=30)
-    is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    enrollments = relationship("CourseEnrollment", back_populates="course")
-    lessons = relationship("Lesson", back_populates="course")
-
-class CourseEnrollment(Base):
-    __tablename__ = "course_enrollments"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    course_id = Column(Integer, ForeignKey("courses.id"))
-    status = Column(String, default="trial")  # trial, active, expired, payment_failed
-    enrolled_at = Column(DateTime, default=datetime.utcnow)
-    trial_ends_at = Column(DateTime, default=lambda: datetime.utcnow() + timedelta(days=30))
-    access_expires_at = Column(DateTime, nullable=True)  # ✅ NEW: subscription end
-    payment_method_id = Column(String, nullable=True)  # ✅ NEW: Square token
-    auto_charge_attempted = Column(Boolean, default=False)  # ✅ NEW: prevent duplicate charges
     
-    user = relationship("User", back_populates="enrollments")
-    course = relationship("Course", back_populates="enrollments")
-    progress = relationship("LessonProgress", back_populates="enrollment")
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    price = Column(Float, default=0)
+    currency = Column(String(10), default="USD")
+    icon = Column(String(255), nullable=True)
+    instructor = Column(String(255), nullable=True)
+    duration = Column(String(100), nullable=True)
+    level = Column(String(50), default="Beginner")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== LESSON MODEL ==========
 class Lesson(Base):
     __tablename__ = "lessons"
-    id = Column(Integer, primary_key=True)
-    course_id = Column(Integer, ForeignKey("courses.id"))
-    title = Column(String)
-    description = Column(String, nullable=True)
-    video_url = Column(String, nullable=True)
-    order = Column(Integer)
-    course = relationship("Course", back_populates="lessons")
-    progress = relationship("LessonProgress", back_populates="lesson")
-
-class LessonProgress(Base):
-    __tablename__ = "lesson_progress"
-    id = Column(Integer, primary_key=True)
-    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"))
-    lesson_id = Column(Integer, ForeignKey("lessons.id"))
-    completed = Column(Boolean, default=False)
-    completed_at = Column(DateTime, nullable=True)
     
-    enrollment = relationship("CourseEnrollment", back_populates="progress")
-    lesson = relationship("Lesson", back_populates="progress")
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    content = Column(Text)  # Lesson body/markdown
+    video_url = Column(String(255), nullable=True)
+    order = Column(Integer, default=0)
+    is_free = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== PAYMENT MODEL ==========
 class Payment(Base):
     __tablename__ = "payments"
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
-    course_id = Column(Integer, ForeignKey("courses.id"))
-    amount = Column(Float)
-    status = Column(String, default="pending")  # pending, success, failed
-    payment_method = Column(String)  # square_tokenize, square_auto_charge
-    square_payment_id = Column(String, nullable=True)
-    tx_ref = Column(String, nullable=True)
-    error_message = Column(String, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
     
-    user = relationship("User", back_populates="payments")
-
-class SubscriptionCharge(Base):
-    __tablename__ = "subscription_charges"
-    id = Column(Integer, primary_key=True)
-    enrollment_id = Column(Integer, ForeignKey("course_enrollments.id"))
-    amount = Column(Float)
-    status = Column(String, default="pending")  # pending, success, failed
-    square_payment_id = Column(String, nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow)
-    next_retry_at = Column(DateTime, nullable=True)
-    error_message = Column(Text, nullable=True)
+    id = Column(Integer, primary_key=True, index=True)
+    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="USD")
+    status = Column(String(50), default="pending")  # pending, completed, failed
+    payment_method = Column(String(100))  # square, flutterwave, paystack
+    transaction_id = Column(String(255), unique=True, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# ========== MISSING MODELS ADDED BELOW ==========
+# ========== CAPTCHA MODEL ==========
+class Captcha(Base):
+    __tablename__ = "captchas"
+    
+    id = Column(String(36), primary_key=True, index=True)
+    challenge = Column(String(10), nullable=False)  # The correct answer
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
 
+# ========== SERVICE MODEL ==========
 class Service(Base):
-    """Services offered by Ayinde Technologies"""
     __tablename__ = "services"
-    id = Column(Integer, primary_key=True)
-    name = Column(String, index=True)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
     description = Column(Text)
-    icon = Column(String, nullable=True)
+    icon = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== TEAM MEMBER MODEL ==========
 class TeamMember(Base):
-    """Team members"""
     __tablename__ = "team_members"
-    id = Column(Integer, primary_key=True)
-    name = Column(String)
-    role = Column(String)
-    bio = Column(Text, nullable=True)
-    image = Column(String, nullable=True)
-    expertise = Column(String, nullable=True)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    role = Column(String(255))
+    bio = Column(Text)
+    image = Column(String(255), nullable=True)
+    expertise = Column(String(255))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== PROJECT MODEL ==========
 class Project(Base):
-    """Portfolio projects"""
     __tablename__ = "projects"
-    id = Column(Integer, primary_key=True)
-    title = Column(String)
-    client = Column(String, nullable=True)
-    category = Column(String, nullable=True)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    client = Column(String(255))
+    category = Column(String(100))
     description = Column(Text)
-    image = Column(String, nullable=True)
-    technologies = Column(String, nullable=True)
-    results = Column(Text, nullable=True)
-    app_url = Column(String, nullable=True)
+    image = Column(String(255), nullable=True)
+    technologies = Column(Text)  # Comma-separated or JSON
+    results = Column(Text)
+    app_url = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+# ========== CONTACT MESSAGE MODEL ==========
 class ContactMessage(Base):
-    """Contact form submissions"""
     __tablename__ = "contact_messages"
-    id = Column(Integer, primary_key=True)
-    name = Column(String)
-    email = Column(String)
-    subject = Column(String)
-    message = Column(Text)
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    subject = Column(String(255))
+    message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
