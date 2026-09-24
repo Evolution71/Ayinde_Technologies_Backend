@@ -282,7 +282,7 @@ async def enroll_in_course(
     return {
         "status": "success",
         "message": f"Welcome to {course.title}! Your {trial_days}-day free trial has started.",
-        "enrollment": schemas.CourseEnrollmentOut.from_attributes(enrollment)
+        "enrollment_id": enrollment.id
     }
 
 
