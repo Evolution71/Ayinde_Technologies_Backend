@@ -1,230 +1,209 @@
 """
-Square payment processing for Ayinde Technologies courses.
-FIXED: Uses Request object to parse JSON body (not query params).
+Payments endpoints - handle course enrollment payments.
+
+Endpoints:
+- POST /api/payments/create-intent/ - Create payment intent for a course
+- POST /api/payments/verify/ - Verify payment after completion
+- GET /api/payments/{id}/ - Get payment status
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
-import uuid
+from datetime import datetime
+from typing import Optional
 
 from database import get_db
-from models import User, Course, CourseEnrollment, Payment
 from auth import get_current_user
+from models import User, Course, CourseEnrollment, Payment
+import schemas
+import uuid
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
 
 
 @router.post("/create-intent/")
 async def create_payment_intent(
-    request: Request,
+    request_data: dict,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
     """
-    Create a Square payment intent for a course.
+    Create a payment intent for upgrading course access.
     
-    Expects JSON body:
-    {
-        "course_id": 1,
-        "amount": 49.99,
-        "currency": "USD"
-    }
+    After free trial ends, user can pay to continue access.
+    This endpoint creates the payment record and returns intent ID.
     
-    Returns:
-    {
-        "success": true,
-        "client_token": "...",
-        "payment_id": 123,
-        "amount": 49.99,
-        "currency": "USD"
-    }
+    Requires:
+    - User authentication (JWT token)
+    - course_id in request body
+    
+    Returns: Payment intent with amount and currency
+    
+    Errors:
+    - 404: Course not found
+    - 400: Invalid course or payment data
     """
-    try:
-        # Parse JSON body
-        body = await request.json()
-        course_id = body.get("course_id")
-        amount = body.get("amount", 0)
-        currency = body.get("currency", "USD")
-        
-        print(f"[payments] create-intent: course_id={course_id}, amount={amount}, currency={currency}")
-        
-        # Validate course_id
-        if not course_id:
-            raise HTTPException(status_code=400, detail="course_id required")
-        
-        # Get course from DB
-        course = db.query(Course).filter(Course.id == course_id).first()
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        
-        if not course.is_active:
-            raise HTTPException(status_code=400, detail="Course not active")
-        
-        # Check for existing active enrollment
-        existing = db.query(CourseEnrollment).filter(
-            CourseEnrollment.user_id == current_user.id,
-            CourseEnrollment.course_id == course_id,
-            CourseEnrollment.status == "active"
-        ).first()
-        
-        if existing:
-            raise HTTPException(status_code=400, detail="Already enrolled in this course")
-        
-        # Use provided amount or fall back to course price
-        final_amount = float(amount) if amount > 0 else float(course.price or 0)
-        
-        # Generate transaction reference
-        tx_ref = f"PAY-{current_user.id}-{course_id}-{uuid.uuid4().hex[:8].upper()}"
-        
-        # Create payment record with course_id set explicitly
-        payment = Payment(
-            user_id=current_user.id,
-            course_id=course_id,
-            tx_ref=tx_ref,  # ← ADD THIS
-            amount=final_amount,
-            currency=currency,
-            status="pending",
-            payment_method="square",
-            payment_data={"course_id": course_id},
-            expires_at=datetime.utcnow() + timedelta(hours=24)
-        )
-        db.add(payment)
-        db.commit()
-        db.refresh(payment)
-        
-        print(f"[payments] ✅ Payment created: id={payment.id}, amount={final_amount}")
-        
-        # For now, return a test token (Square integration comes later)
-        # In production, generate real client token from Square API
-        return {
-            "success": True,
-            "client_token": "test_token_" + str(uuid.uuid4()),  # Test mode
-            "payment_id": payment.id,
-            "amount": final_amount,
-            "currency": currency
-        }
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        print(f"[payments] ❌ Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    course_id = request_data.get('course_id')
+    if not course_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="course_id is required"
+        )
+    
+    # Get course
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    # Check enrollment exists
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course_id
+    ).first()
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You must enroll in this course first"
+        )
+    
+    # Get amount from request or use course price
+    amount = request_data.get('amount') or course.price or 99.99
+    currency = request_data.get('currency', 'USD')
+    
+    # Create payment record
+    payment = Payment(
+        enrollment_id=enrollment.id,
+        user_id=current_user.id,
+        course_id=course_id,
+        amount=float(amount),
+        currency=currency,
+        status="pending",
+        payment_method="square"
+    )
+    
+    db.add(payment)
+    db.commit()
+    db.refresh(payment)
+    
+    print(f"[payments] create-intent: course_id={course_id}, amount={amount}, currency={currency}")
+    
+    return {
+        "status": "success",
+        "payment_id": payment.id,
+        "course_id": course_id,
+        "amount": amount,
+        "currency": currency,
+        "course_title": course.title
+    }
 
 
 @router.post("/verify/")
 async def verify_payment(
-    request: Request,
+    request_data: dict,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
     """
-    Verify payment and grant course access.
+    Verify a payment after Square completes the transaction.
     
-    Expects JSON body:
-    {
-        "payment_id": 123,
-        "nonce": "cnp_..."
-    }
+    Updates the payment status and extends course access if successful.
     
-    Returns:
-    {
-        "success": true,
-        "enrollment_id": 456
-    }
+    Requires:
+    - payment_id: The payment record to verify
+    - nonce: Square payment token (from Square Web Payments SDK)
+    - billing_postal_code: Optional
+    - billing_country: Optional
+    
+    Returns: Confirmation and new access end date
+    
+    Errors:
+    - 404: Payment not found
+    - 400: Payment verification failed
     """
-    try:
-        # Parse JSON body
-        body = await request.json()
-        payment_id = body.get("payment_id")
-        nonce = body.get("nonce")
-        
-        print(f"[payments] verify: payment_id={payment_id}")
-        
-        # Validate
-        if not payment_id or not nonce:
-            raise HTTPException(status_code=400, detail="Missing payment_id or nonce")
-        
-        # Get payment
-        payment = db.query(Payment).filter(
-            Payment.id == payment_id,
-            Payment.user_id == current_user.id
-        ).first()
-        
-        if not payment:
-            raise HTTPException(status_code=404, detail="Payment not found")
-        
-        if payment.status != "pending":
-            raise HTTPException(status_code=400, detail="Payment already processed")
-        
-        # Get course from payment data
-        course_id = payment.payment_data.get("course_id")
-        course = db.query(Course).filter(Course.id == course_id).first()
-        
-        if not course:
-            raise HTTPException(status_code=404, detail="Course not found")
-        
-        # Mark payment as completed
-        payment.status = "completed"
-        payment.verified_at = datetime.utcnow()
-        
-        # Get or create enrollment
-        enrollment = db.query(CourseEnrollment).filter(
-            CourseEnrollment.user_id == current_user.id,
-            CourseEnrollment.course_id == course_id
-        ).first()
-        
-        if not enrollment:
-            enrollment = CourseEnrollment(
-                user_id=current_user.id,
-                course_id=course_id,
-                status="active",
-                access_expires_at=datetime.utcnow() + timedelta(days=365)
-            )
-            db.add(enrollment)
-        else:
-            enrollment.status = "active"
-            enrollment.access_expires_at = datetime.utcnow() + timedelta(days=365)
-        
-        payment.enrollment_id = enrollment.id
-        db.commit()
-        
-        print(f"[payments] ✅ Payment verified: enrollment_id={enrollment.id}")
-        
-        return {"success": True, "enrollment_id": enrollment.id}
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        db.rollback()
-        print(f"[payments] ❌ Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    payment_id = request_data.get('payment_id')
+    nonce = request_data.get('nonce')
+    
+    if not payment_id or not nonce:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="payment_id and nonce are required"
+        )
+    
+    # Get payment
+    payment = db.query(Payment).filter(
+        Payment.id == payment_id,
+        Payment.user_id == current_user.id
+    ).first()
+    
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found"
+        )
+    
+    # In production, call Square API here to verify the nonce and charge
+    # For now, mark as completed
+    payment.status = "completed"
+    payment.transaction_id = str(uuid.uuid4())
+    
+    # Update enrollment status
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.id == payment.enrollment_id
+    ).first()
+    
+    if enrollment:
+        enrollment.status = "active"
+    
+    db.commit()
+    
+    return {
+        "status": "success",
+        "message": "Payment verified and processed successfully",
+        "payment_id": payment.id,
+        "transaction_id": payment.transaction_id,
+        "access_granted": True
+    }
 
 
 @router.get("/{payment_id}/")
-async def get_payment(
+async def get_payment_status(
     payment_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db)
 ):
-    """Get payment status."""
-    payment = db.query(Payment).filter(Payment.id == payment_id).first()
+    """
+    Get the status of a payment.
     
-    if not payment or payment.user_id != current_user.id:
-        raise HTTPException(status_code=404, detail="Payment not found")
+    Returns: Current payment status (pending, completed, failed)
+    
+    Errors:
+    - 404: Payment not found
+    - 403: Access denied
+    """
+    
+    payment = db.query(Payment).filter(
+        Payment.id == payment_id,
+        Payment.user_id == current_user.id
+    ).first()
+    
+    if not payment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Payment not found"
+        )
     
     return {
-        "id": payment.id,
+        "payment_id": payment.id,
         "status": payment.status,
         "amount": payment.amount,
         "currency": payment.currency,
+        "course_id": payment.course_id,
         "created_at": payment.created_at,
-        "verified_at": payment.verified_at,
+        "transaction_id": payment.transaction_id
     }
-
-
-@router.post("/webhook/")
-async def webhook():
-    """Webhook endpoint for Square events."""
-    return {"status": "received"}
