@@ -1,41 +1,56 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
+import logging
 import os
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
+# Database
+from database import engine, Base
 
-from database import Base, engine
+# Models
+import models
+
+# Routers
 from routers import auth, courses, services, team, projects, contact, lessons, payments, captcha
 
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Ayinde Technologies API", version="1.0.0")
+# Initialize app
+app = FastAPI(
+    title="Ayinde Technologies API",
+    description="Premium Web & App Development Services",
+    version="1.0.0"
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ========== CORS CONFIGURATION ==========
-# Get allowed origins from environment, with defaults for local + production
-ALLOWED_ORIGINS = os.getenv('ALLOWED_ORIGINS', 'http://localhost:3000,https://ayindetechnologies.com').split(',')
+allow_origins = [
+    'http://localhost:3000',
+    'http://localhost:8000',
+    'https://ayindetechnologies.com',
+    'https://www.ayindetechnologies.com'
+]
 
-# Clean up whitespace
-ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS]
+print(f"✅ CORS enabled for: {allow_origins}")
 
-print(f"✅ CORS enabled for: {ALLOWED_ORIGINS}")
-
-# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ========== ROUTES ==========
+# ========== ROUTERS ==========
+# Include all routers
 app.include_router(auth.router)
 app.include_router(courses.router)
-app.include_router(services.router)
+app.include_router(services.router)  # ✅ NEW: Premium Services
 app.include_router(team.router)
 app.include_router(projects.router)
 app.include_router(contact.router)
@@ -45,31 +60,51 @@ app.include_router(captcha.router)
 
 # ========== HEALTH CHECK ==========
 @app.get("/health")
-def health_check():
+async def health_check():
+    """API health check endpoint"""
     return {
         "status": "healthy",
-        "message": "✅ Application startup complete"
+        "service": "Ayinde Technologies API",
+        "version": "1.0.0"
     }
 
 @app.get("/")
-def read_root():
+async def root():
+    """API root endpoint"""
     return {
-        "message": "Ayinde Technologies API",
+        "message": "Welcome to Ayinde Technologies API",
         "version": "1.0.0",
-        "endpoints": [
-            "/api/auth",
-            "/api/courses",
-            "/api/services",
-            "/api/team",
-            "/api/projects",
-            "/api/contact",
-            "/api/lessons",
-            "/api/payments",
-            "/api/captcha"
-        ]
+        "endpoints": {
+            "auth": "/api/auth",
+            "courses": "/api/courses",
+            "services": "/api/services",
+            "team": "/api/team",
+            "projects": "/api/projects",
+            "contact": "/api/contact",
+            "lessons": "/api/lessons",
+            "payments": "/api/payments",
+            "captcha": "/api/captcha"
+        }
     }
+
+# ========== ERROR HANDLERS ==========
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Unhandled error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
 
 if __name__ == "__main__":
     import uvicorn
+    
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=port,
+        reload=False,
+        log_level="info"
+    )

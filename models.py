@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 import enum
@@ -150,3 +150,51 @@ class ContactMessage(Base):
     subject = Column(String(255))
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+# ========== SERVICE ORDER MODEL (Premium Services) ==========
+class ServiceOrder(Base):
+    """Premium service order model for Website Pro, Application Pro, and Supreme VIP Platinum"""
+    __tablename__ = "service_orders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Service details
+    tier = Column(String(50), nullable=False)  # website, application, supreme
+    tier_name = Column(String(255), nullable=False)  # "Website Pro", "Application Pro", etc.
+    amount = Column(Float, nullable=False)  # Price in USD
+    currency = Column(String(10), default="USD")
+    payment_option = Column(String(50))  # monthly, annual, threeyear, halfdown
+    discount_percent = Column(Integer, default=0)  # 0, 5, 10, 20
+    period = Column(String(100))  # "/month", "/2 years", "/3 years", etc.
+    
+    # Billing information
+    full_name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False)
+    phone = Column(String(20), nullable=True)
+    company = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=False)
+    country = Column(String(2), default="US")
+    
+    # Service duration
+    status = Column(String(50), default="active")  # active, expired, cancelled, suspended
+    service_starts_at = Column(DateTime, default=datetime.utcnow)
+    service_ends_at = Column(DateTime, nullable=False)  # When service expires
+    
+    # Payment information
+    payment_status = Column(String(50), default="pending")  # pending, completed, failed, refunded
+    payment_method = Column(String(50), default="square")  # square, other
+    payment_source_id = Column(String(255), nullable=True)  # Square token
+    transaction_id = Column(String(255), unique=True, nullable=True)  # Unique transaction ID
+    payment_completed_at = Column(DateTime, nullable=True)  # When payment was processed
+    
+    # Cancellation
+    cancelled_at = Column(DateTime, nullable=True)
+    cancellation_reason = Column(Text, nullable=True)
+    
+    # Additional data
+    metadata = Column(JSON, default=dict)  # Stores features, IP, user agent, etc.
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
