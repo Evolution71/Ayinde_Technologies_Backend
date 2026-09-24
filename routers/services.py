@@ -7,14 +7,6 @@ from database import get_db
 from auth import get_current_user
 from models import User, ServiceOrder
 
-# Don't import Service - just query by table name if it fails
-try:
-    from models import Service
-    HAS_SERVICE = True
-except:
-    HAS_SERVICE = False
-    Service = None
-
 router = APIRouter(prefix="/api/services", tags=["services"])
 
 
@@ -22,48 +14,15 @@ router = APIRouter(prefix="/api/services", tags=["services"])
 @router.get("/")
 async def get_services(db: Session = Depends(get_db)):
     """Get all available services"""
-    try:
-        if HAS_SERVICE and Service:
-            services = db.query(Service).all()
-            return [
-                {
-                    "id": s.id,
-                    "name": s.name,
-                    "description": s.description,
-                    "icon": s.icon if hasattr(s, 'icon') else None,
-                }
-                for s in services
-            ]
-        else:
-            # Fallback: return empty if Service model not available
-            return []
-    except Exception as e:
-        print(f"[services] Error fetching services: {str(e)}")
-        return []
+    # Return empty list for now - services data can be added via Supabase
+    return []
 
 
 # PUBLIC: Get single service (NO AUTH)
 @router.get("/{service_id}/")
 async def get_service(service_id: int, db: Session = Depends(get_db)):
     """Get a specific service"""
-    try:
-        if HAS_SERVICE and Service:
-            service = db.query(Service).filter(Service.id == service_id).first()
-            if not service:
-                raise HTTPException(status_code=404, detail="Service not found")
-            return {
-                "id": service.id,
-                "name": service.name,
-                "description": service.description,
-                "icon": service.icon if hasattr(service, 'icon') else None,
-            }
-        else:
-            raise HTTPException(status_code=404, detail="Services not available")
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"[services] Error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=404, detail="Service not found")
 
 
 # AUTHENTICATED: Create service order
@@ -163,8 +122,6 @@ async def create_service_order(
             }
         }
     
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"[services] Error creating order: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
