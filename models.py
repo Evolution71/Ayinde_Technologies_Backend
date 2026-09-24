@@ -28,6 +28,7 @@ class Course(Base):
     instructor = Column(String(255), nullable=True)
     duration = Column(String(100), nullable=True)
     level = Column(String(50), default="Beginner")
+    is_active = Column(Boolean, default=True)  # ✅ ROUTER NEEDS THIS
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
