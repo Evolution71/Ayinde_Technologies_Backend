@@ -29,6 +29,8 @@ class Course(Base):
     duration = Column(String(100), nullable=True)
     level = Column(String(50), default="Beginner")
     is_active = Column(Boolean, default=True)  # ✅ ROUTER NEEDS THIS
+    trial_duration_days = Column(Integer, default=30)  # ✅ ROUTER NEEDS THIS
+    trial_end_date = Column(DateTime, nullable=True)  # ✅ ROUTER NEEDS THIS
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
