@@ -41,21 +41,19 @@ async def get_my_enrollments(
     Get list of courses the current user is enrolled in.
     Returns course IDs for frontend to mark as "✅ Enrolled"
     
-    Returns: List of enrolled course IDs with status
+    Returns: List of enrolled course IDs
     """
     enrollments = db.query(CourseEnrollment).filter(
-        CourseEnrollment.user_id == current_user.id,
-        CourseEnrollment.status.in_(["trial", "active"])
+        CourseEnrollment.user_id == current_user.id
     ).all()
     
     return {
         "success": True,
         "enrollments": [
             {
+                "id": e.id,
                 "course_id": e.course_id,
-                "status": e.status,
-                "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
-                "trial_ends_at": e.trial_ends_at.isoformat() if e.trial_ends_at else None
+                "user_id": e.user_id
             }
             for e in enrollments
         ]
