@@ -54,10 +54,12 @@ async def get_my_enrollments(
             {
                 "course_id": e.course_id,
                 "status": e.status,
-                "enrolled_at": e.enrolled_at,
-                "trial_ends_at": e.trial_ends_at
+                "enrolled_at": e.enrolled_at.isoformat() if e.enrolled_at else None,
+                "trial_ends_at": e.trial_ends_at.isoformat() if e.trial_ends_at else None
             }
             for e in enrollments
+        ]
+    }
         ]
     }
 
