@@ -60,9 +60,6 @@ async def get_my_enrollments(
             for e in enrollments
         ]
     }
-        ]
-    }
-
 
 # ========== LIST COURSES ==========
 
