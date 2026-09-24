@@ -12,7 +12,15 @@ from database import engine, Base
 import models
 
 # Routers
-from routers import auth, courses, services, team, projects, contact, lessons, payments, captcha
+from routers.auth import router as auth_router
+from routers.courses import router as courses_router
+from routers.services import router as services_router
+from routers.team import router as team_router
+from routers.projects import router as projects_router
+from routers.contact import router as contact_router
+from routers.lessons import router as lessons_router
+from routers.payments import router as payments_router
+from routers.captcha import router as captcha_router
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -48,15 +56,15 @@ app.add_middleware(
 
 # ========== ROUTERS ==========
 # Include all routers
-app.include_router(auth.router)
-app.include_router(courses.router)
-app.include_router(services.router)  # ✅ NEW: Premium Services
-app.include_router(team.router)
-app.include_router(projects.router)
-app.include_router(contact.router)
-app.include_router(lessons.router)
-app.include_router(payments.router)
-app.include_router(captcha.router)
+app.include_router(auth_router)
+app.include_router(courses_router)
+app.include_router(services_router)  # ✅ Premium Services
+app.include_router(team_router)
+app.include_router(projects_router)
+app.include_router(contact_router)
+app.include_router(lessons_router)
+app.include_router(payments_router)
+app.include_router(captcha_router)
 
 # ========== HEALTH CHECK ==========
 @app.get("/health")
