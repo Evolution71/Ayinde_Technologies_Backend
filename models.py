@@ -12,7 +12,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False, default="")
     email = Column(String(255), unique=True, index=True, nullable=False)
-    password = Column(String(255), nullable=False)  # ✅ PASSWORD FIELD
+    hashed_password = Column(String(255), nullable=False)  # ✅ ROUTER EXPECTS THIS NAME
     created_at = Column(DateTime, default=datetime.utcnow)
 
 # ========== COURSE MODEL ==========
