@@ -347,3 +347,13 @@ class CaptchaVerifyResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+# ========== PAYMENT SCHEMAS ==========
+
+class SavePaymentMethodRequest(BaseModel):
+    """Request to save a payment method (Square nonce)"""
+    nonce: str
+    
+    class Config:
+        from_attributes = True
