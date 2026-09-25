@@ -1,150 +1,184 @@
 """
 Captcha router for Ayinde Technologies API.
-Updated to use database storage instead of in-memory dict.
-Generates and verifies text-based captchas for form protection.
+Database-backed text captchas with Supabase PostgreSQL.
+
+Endpoints:
+  GET  /api/captcha/        → Generate new captcha
+  POST /api/captcha/verify/ → Verify answer
+  DELETE /api/captcha/{id}/ → Delete captcha (cleanup)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from sqlalchemy import Column, Integer, String, DateTime, delete
 from datetime import datetime, timedelta
 import random
 import string
-from database import get_db
-from models import Captcha
-import schemas
+import logging
 
+from database import get_db, Base, engine
+from schemas import CaptchaGenerateResponse, CaptchaVerifyRequest, CaptchaVerifyResponse
+
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/captcha", tags=["captcha"])
 
+# ========== CAPTCHA MODEL ==========
 
-def generate_captcha_text(length=6):
-    """Generate random captcha text (letters + digits)"""
-    characters = string.ascii_uppercase + string.digits
-    return ''.join(random.choices(characters, k=length))
+from sqlalchemy.orm import declarative_base
 
+class Captcha(Base):
+    """Database-backed captcha storage"""
+    __tablename__ = "captchas"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    captcha_id = Column(String(16), unique=True, index=True, nullable=False)  # Unique token
+    text = Column(String(20), nullable=False)  # The text to display (e.g., "ABC123")
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    expires_at = Column(DateTime, nullable=False, index=True)
 
-@router.get("/")
+# Auto-create table
+Base.metadata.create_all(bind=engine)
+
+# ========== HELPER FUNCTIONS ==========
+
+def generate_captcha_id():
+    """Generate unique 16-char alphanumeric ID"""
+    return ''.join(random.choices(string.ascii_letters + string.digits, k=16))
+
+def generate_captcha_text():
+    """
+    Generate random captcha text
+    Format: 3 uppercase letters + 3 digits (e.g., ABC123)
+    """
+    letters = ''.join(random.choices(string.ascii_uppercase, k=3))
+    digits = ''.join(random.choices(string.digits, k=3))
+    # Shuffle the order
+    combined = list(letters + digits)
+    random.shuffle(combined)
+    return ''.join(combined)
+
+# ========== ENDPOINTS ==========
+
+@router.get("/", response_model=CaptchaGenerateResponse)
 async def generate_captcha(db: Session = Depends(get_db)):
     """
-    Generate a new captcha challenge.
+    Generate a new text-based captcha.
     
     Returns:
-    - captcha_id: Unique ID for this challenge
-    - captcha_image: Text to display to user (for text-based captcha)
-    - expires_at: When this captcha expires (5 minutes)
+      {
+        "captcha_id": "xJ7kL9mN2pQ4",      ← Send this back during verification
+        "captcha_image": "ABC123",          ← Display this to user
+        "expires_at": "2026-09-25T12:30:00"
+      }
     
-    Frontend should:
-    1. Display captcha_image text to user
-    2. Get user's answer
-    3. Call /api/captcha/verify/ with captcha_id and user's answer
+    Captcha expires in 5 minutes.
     """
     try:
-        # Generate text captcha
-        captcha_text = generate_captcha_text(6)
+        # Generate unique ID and text
+        captcha_id = generate_captcha_id()
+        captcha_text = generate_captcha_text()
+        expires_at = datetime.utcnow() + timedelta(minutes=5)
         
-        # Create captcha record in database
+        # Create and save to database
         captcha = Captcha(
+            captcha_id=captcha_id,
             text=captcha_text,
-            created_at=datetime.utcnow(),
-            expires_at=datetime.utcnow() + timedelta(minutes=5)
+            expires_at=expires_at
         )
-        
         db.add(captcha)
         db.commit()
         db.refresh(captcha)
         
-        print(f"[captcha] Generated new captcha: id={captcha.id}, text={captcha_text}")
+        logger.info(f"[Captcha] Generated: {captcha_id} = {captcha_text}")
         
         return {
-            "success": True,
-            "captcha_id": captcha.id,
-            "captcha_image": captcha_text,  # Display this text to user
-            "expires_at": captcha.expires_at.isoformat(),
-            "message": "Please enter the text shown above"
+            "captcha_id": captcha_id,
+            "captcha_image": captcha_text,
+            "expires_at": expires_at.isoformat()
         }
     
     except Exception as e:
-        print(f"[captcha] Error generating captcha: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to generate captcha: {str(e)}"
-        )
+        db.rollback()
+        logger.error(f"[Captcha] Generation error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate captcha: {str(e)}")
 
 
-@router.post("/verify/")
-async def verify_captcha(
-    request: dict,
-    db: Session = Depends(get_db)
-):
+@router.post("/verify/", response_model=CaptchaVerifyResponse)
+async def verify_captcha(request: CaptchaVerifyRequest, db: Session = Depends(get_db)):
     """
-    Verify user's captcha answer.
+    Verify a captcha answer.
     
-    Expected request format:
-    {
-        "captcha_id": <id from generate_captcha>,
-        "captcha_answer": "<user's answer>"
-    }
+    Request body:
+      {
+        "captcha_id": "xJ7kL9mN2pQ4",
+        "captcha_answer": "abc123"  ← Case-insensitive
+      }
     
     Returns:
-    - success: true if verified, false otherwise
-    - message: Explanation
-    - score: 1.0 if valid, 0.0 if invalid
+      {
+        "success": true/false,
+        "message": "...",
+        "score": 1.0 if correct, 0.0 if not
+      }
+    
+    Deletes captcha from DB after verification attempt (win or lose).
     """
     try:
-        captcha_id = request.get('captcha_id')
-        user_answer = request.get('captcha_answer', '').strip()
+        captcha_id = request.captcha_id.strip()
+        user_answer = request.captcha_answer.strip().upper()  # Normalize
         
-        if not captcha_id:
-            return {
-                "success": False,
-                "message": "captcha_id is required",
-                "score": 0.0
-            }
+        # Fetch from database
+        captcha = db.query(Captcha).filter(
+            Captcha.captcha_id == captcha_id
+        ).first()
         
-        # Find captcha in database
-        captcha = db.query(Captcha).filter(Captcha.id == captcha_id).first()
-        
+        # Check if exists
         if not captcha:
-            print(f"[captcha] Captcha {captcha_id} not found")
+            logger.warning(f"[Captcha] Verify: not found or expired: {captcha_id}")
             return {
                 "success": False,
-                "message": "Captcha not found or expired",
+                "message": "Captcha expired or invalid",
                 "score": 0.0
             }
         
         # Check if expired
         if datetime.utcnow() > captcha.expires_at:
-            print(f"[captcha] Captcha {captcha_id} expired")
             db.delete(captcha)
             db.commit()
+            logger.warning(f"[Captcha] Verify: expired: {captcha_id}")
             return {
                 "success": False,
-                "message": "Captcha expired. Please refresh and try again.",
+                "message": "Captcha expired",
                 "score": 0.0
             }
         
-        # Verify answer (case-insensitive)
-        is_valid = captcha.text.upper() == user_answer.upper()
+        # Check answer (case-insensitive)
+        correct_answer = captcha.text.upper()
         
-        if is_valid:
-            print(f"[captcha] Captcha {captcha_id} verified successfully")
-            # Delete after successful verification
+        if user_answer == correct_answer:
+            # Success — delete from DB
             db.delete(captcha)
             db.commit()
+            logger.info(f"[Captcha] Verified successfully: {captcha_id}")
             return {
                 "success": True,
-                "message": "Captcha verified!",
+                "message": "Captcha verified successfully",
                 "score": 1.0
             }
         else:
-            print(f"[captcha] Captcha {captcha_id} verification failed - incorrect answer")
+            # Failed — delete from DB (one attempt only)
+            db.delete(captcha)
+            db.commit()
+            logger.info(f"[Captcha] Verification failed: {captcha_id} (user: {user_answer}, correct: {correct_answer})")
             return {
                 "success": False,
-                "message": "Incorrect answer. Please try again.",
+                "message": "Incorrect answer. Try again.",
                 "score": 0.0
             }
     
     except Exception as e:
-        print(f"[captcha] Error verifying captcha: {str(e)}")
+        db.rollback()
+        logger.error(f"[Captcha] Verify error: {str(e)}")
         return {
             "success": False,
             "message": f"Verification failed: {str(e)}",
@@ -153,44 +187,42 @@ async def verify_captcha(
 
 
 @router.delete("/{captcha_id}/")
-async def delete_captcha(
-    captcha_id: int,
-    db: Session = Depends(get_db)
-):
-    """Delete a captcha (useful for form cancellations)"""
+async def delete_captcha(captcha_id: str, db: Session = Depends(get_db)):
+    """
+    Delete a captcha (for cleanup, e.g., form cancelled).
+    """
     try:
-        captcha = db.query(Captcha).filter(Captcha.id == captcha_id).first()
+        captcha = db.query(Captcha).filter(Captcha.captcha_id == captcha_id).first()
         
-        if not captcha:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Captcha not found"
-            )
-        
-        db.delete(captcha)
-        db.commit()
+        if captcha:
+            db.delete(captcha)
+            db.commit()
+            logger.info(f"[Captcha] Deleted: {captcha_id}")
         
         return {"success": True, "message": "Captcha deleted"}
     
     except Exception as e:
-        print(f"[captcha] Error deleting captcha: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete captcha: {str(e)}"
-        )
+        db.rollback()
+        logger.error(f"[Captcha] Delete error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete: {str(e)}")
 
 
 @router.get("/health/")
 async def captcha_health(db: Session = Depends(get_db)):
-    """Health check endpoint for captcha service"""
+    """Health check endpoint"""
     try:
-        count = db.query(Captcha).count()
+        # Count active (non-expired) captchas
+        active_count = db.query(Captcha).filter(
+            Captcha.expires_at > datetime.utcnow()
+        ).count()
+        
         return {
             "status": "healthy",
-            "active_captchas": count
+            "active_captchas": active_count
         }
     except Exception as e:
+        logger.error(f"[Captcha] Health check error: {str(e)}")
         return {
-            "status": "unhealthy",
-            "error": str(e)
+            "status": "error",
+            "detail": str(e)
         }
