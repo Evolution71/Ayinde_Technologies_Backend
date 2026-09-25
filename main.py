@@ -1,11 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import logging
 import os
-from datetime import datetime
-import threading
 
 # Database
 from database import engine, Base
@@ -13,21 +10,10 @@ from database import engine, Base
 # Models
 import models
 
-# Routers
-from routers.auth import router as auth_router
-from routers.courses import router as courses_router
-from routers.services import router as services_router
-from routers.team import router as team_router
-from routers.projects import router as projects_router
-from routers.contact import router as contact_router
-from routers.lessons import router as lessons_router
-from routers.payments import router as payments_router
-from routers.captcha import router as captcha_router
-
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-# Initialize app
+# Initialize app FIRST
 app = FastAPI(
     title="Ayinde Technologies API",
     description="Premium Web & App Development Services",
@@ -38,46 +24,48 @@ app = FastAPI(
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== CORS CONFIGURATION ==========
+# ========== CORS CONFIGURATION (MUST BE FIRST!) ==========
 allow_origins = [
     'http://localhost:3000',
     'http://localhost:8000',
     'https://ayindetechnologies.com',
-    'https://www.ayindetechnologies.com'
+    'https://www.ayindetechnologies.com',
+    'https://ayindetechnologies.com/',
+    'https://www.ayindetechnologies.com/'
 ]
 
-print(f"✅ CORS enabled for: {allow_origins}")
+# Add from environment if set
+env_origins = os.getenv('ALLOWED_ORIGINS', '')
+if env_origins:
+    allow_origins.extend(env_origins.split(','))
 
+# Remove duplicates
+allow_origins = list(set(allow_origins))
+
+logger.info(f"✅ CORS enabled for: {allow_origins}")
+
+# ADD CORS MIDDLEWARE FIRST (before any routers)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
 
-# ========== AUTO-CHARGE SCHEDULER (Uses APScheduler) ==========
-# Starts on FastAPI startup
-def start_auto_charge_scheduler():
-    """Initialize auto-charge scheduler in background thread"""
-    try:
-        from auto_charge_scheduler import start_scheduler
-        start_scheduler()
-        logger.info("[startup] ✅ Auto-charge scheduler initialized")
-    except ImportError:
-        logger.warning("[startup] ⚠️ auto_charge_scheduler.py not found - auto-charge disabled")
-    except Exception as e:
-        logger.error(f"[startup] ❌ Failed to start scheduler: {e}")
+# ========== ROUTERS (Import AFTER middleware) ==========
+from routers.auth import router as auth_router
+from routers.courses import router as courses_router
+from routers.services import router as services_router
+from routers.team import router as team_router
+from routers.projects import router as projects_router
+from routers.contact import router as contact_router
+from routers.lessons import router as lessons_router
+from routers.payments import router as payments_router
+from routers.captcha import router as captcha_router
 
-# Start scheduler on app startup
-@app.on_event("startup")
-async def startup_event():
-    """Run on FastAPI startup"""
-    # Start scheduler in background thread
-    scheduler_thread = threading.Thread(target=start_auto_charge_scheduler, daemon=True)
-    scheduler_thread.start()
-
-# ========== ROUTERS ==========
 # Include all routers
 app.include_router(auth_router)
 app.include_router(courses_router)
@@ -87,7 +75,9 @@ app.include_router(projects_router)
 app.include_router(contact_router)
 app.include_router(lessons_router)
 app.include_router(payments_router)
-app.include_router(captcha_router)  # ✅ Captcha (text-based)
+app.include_router(captcha_router)
+
+logger.info("✅ All routers registered")
 
 # ========== HEALTH CHECK ==========
 @app.get("/health")
@@ -97,7 +87,7 @@ async def health_check():
         "status": "healthy",
         "service": "Ayinde Technologies API",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat()
+        "cors_origins": allow_origins
     }
 
 @app.get("/")
@@ -106,7 +96,6 @@ async def root():
     return {
         "message": "Welcome to Ayinde Technologies API",
         "version": "1.0.0",
-        "timestamp": datetime.utcnow().isoformat(),
         "endpoints": {
             "auth": "/api/auth",
             "courses": "/api/courses",
@@ -120,6 +109,12 @@ async def root():
         }
     }
 
+# ========== OPTIONS HANDLER (for CORS preflight) ==========
+@app.options("/{full_path:path}")
+async def preflight_handler(full_path: str):
+    """Handle CORS preflight requests"""
+    return {}
+
 # ========== ERROR HANDLERS ==========
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
@@ -128,6 +123,29 @@ async def global_exception_handler(request, exc):
         status_code=500,
         content={"detail": "Internal server error"}
     )
+
+# ========== STARTUP EVENT ==========
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Ayinde Technologies API started")
+    logger.info(f"📌 CORS Origins: {', '.join(allow_origins)}")
+    
+    # Start scheduler if available
+    try:
+        from auto_charge_scheduler import start_scheduler
+        import threading
+        scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
+        scheduler_thread.start()
+        logger.info("✅ Auto-charge scheduler started")
+    except ImportError:
+        logger.warning("⚠️ auto_charge_scheduler not found - auto-charge disabled")
+    except Exception as e:
+        logger.error(f"❌ Failed to start scheduler: {e}")
+
+# ========== SHUTDOWN EVENT ==========
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("🛑 Ayinde Technologies API shutdown")
 
 if __name__ == "__main__":
     import uvicorn
