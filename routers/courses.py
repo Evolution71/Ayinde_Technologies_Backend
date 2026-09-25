@@ -211,7 +211,7 @@ async def enroll_in_course(
     }
 
 
-# ========== SAVE PAYMENT METHOD ==========
+# ========== SAVE PAYMENT METHOD (FIXED) ==========
 
 @router.post("/{course_id}/save-payment-method/")
 async def save_payment_method(
@@ -222,7 +222,17 @@ async def save_payment_method(
 ):
     """
     Save Square nonce as payment method for course.
+    
+    CRITICAL FIX: payment_method_id column must be VARCHAR(255), not UUID
+    Square nonces are strings like: cnon:CA4SEDfSnJapyxJ-d10K7bCK6e4YASgB
     """
+    
+    # Validate nonce exists and is a string
+    if not request.nonce or not isinstance(request.nonce, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid nonce: must be a non-empty string"
+        )
     
     enrollment = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
@@ -235,16 +245,28 @@ async def save_payment_method(
             detail="Enrollment not found"
         )
     
-    # In production, you would exchange nonce for payment method ID with Square
-    enrollment.payment_method_id = request.nonce
-    db.commit()
+    try:
+        # Store the nonce string directly
+        # ⚠️ Database column MUST be VARCHAR(255), NOT UUID
+        enrollment.payment_method_id = request.nonce
+        enrollment.updated_at = datetime.utcnow()
+        db.commit()
+        
+        logger.info(f"[payment-method] Saved for user_id={current_user.id}, course_id={course_id}, nonce={request.nonce[:20]}...")
+        
+        return {
+            "success": True,
+            "message": "Payment method saved successfully",
+            "enrollment_id": enrollment.id
+        }
     
-    logger.info(f"[payment-method] Saved for user_id={current_user.id}, course_id={course_id}")
-    
-    return {
-        "success": True,
-        "message": "Payment method saved successfully"
-    }
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[payment-method] Error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to save payment method: {str(e)}"
+        )
 
 
 # ========== CANCEL SUBSCRIPTION ==========
