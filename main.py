@@ -13,11 +13,8 @@ from datetime import datetime
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import text
 
 from database import get_db, engine
-from auth import router as auth_router
-from routers import courses, services, captcha
 
 # ============================================================
 # LOGGING
@@ -123,10 +120,24 @@ async def options_handler(full_path: str):
 # ROUTERS
 # ============================================================
 
-app.include_router(auth_router)
-app.include_router(courses.router)
-app.include_router(services.router)
-app.include_router(captcha.router)
+# Import routers
+try:
+    from routers import courses, services, captcha
+    app.include_router(courses.router)
+    app.include_router(services.router)
+    app.include_router(captcha.router)
+    logger.info("✅ Routers included: courses, services, captcha")
+except ImportError as e:
+    logger.error(f"❌ Failed to import routers: {e}")
+
+# Import auth router if it exists
+try:
+    import auth
+    if hasattr(auth, 'router'):
+        app.include_router(auth.router)
+        logger.info("✅ Auth router included")
+except ImportError:
+    logger.warning("⚠️ Auth module not found")
 
 # ============================================================
 # HEALTH CHECK
@@ -155,7 +166,7 @@ async def root():
     }
 
 # ============================================================
-# LOGGING & ERROR HANDLING
+# API ROOT
 # ============================================================
 
 @app.get("/api/")
@@ -167,7 +178,8 @@ async def api_root():
             "auth": "/api/auth/",
             "courses": "/api/courses/",
             "services": "/api/services/",
-            "captcha": "/api/captcha/"
+            "captcha": "/api/captcha/",
+            "health": "/health/"
         }
     }
 
