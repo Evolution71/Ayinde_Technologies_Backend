@@ -4,6 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import logging
 import os
+from datetime import datetime
+import threading
 
 # Database
 from database import engine, Base
@@ -54,6 +56,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ========== AUTO-CHARGE SCHEDULER (Uses APScheduler) ==========
+# Starts on FastAPI startup
+def start_auto_charge_scheduler():
+    """Initialize auto-charge scheduler in background thread"""
+    try:
+        from auto_charge_scheduler import start_scheduler
+        start_scheduler()
+        logger.info("[startup] ✅ Auto-charge scheduler initialized")
+    except ImportError:
+        logger.warning("[startup] ⚠️ auto_charge_scheduler.py not found - auto-charge disabled")
+    except Exception as e:
+        logger.error(f"[startup] ❌ Failed to start scheduler: {e}")
+
+# Start scheduler on app startup
+@app.on_event("startup")
+async def startup_event():
+    """Run on FastAPI startup"""
+    # Start scheduler in background thread
+    scheduler_thread = threading.Thread(target=start_auto_charge_scheduler, daemon=True)
+    scheduler_thread.start()
+
 # ========== ROUTERS ==========
 # Include all routers
 app.include_router(auth_router)
@@ -64,7 +87,7 @@ app.include_router(projects_router)
 app.include_router(contact_router)
 app.include_router(lessons_router)
 app.include_router(payments_router)
-app.include_router(captcha_router)
+app.include_router(captcha_router)  # ✅ Captcha (text-based)
 
 # ========== HEALTH CHECK ==========
 @app.get("/health")
@@ -73,7 +96,8 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "Ayinde Technologies API",
-        "version": "1.0.0"
+        "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 @app.get("/")
@@ -82,6 +106,7 @@ async def root():
     return {
         "message": "Welcome to Ayinde Technologies API",
         "version": "1.0.0",
+        "timestamp": datetime.utcnow().isoformat(),
         "endpoints": {
             "auth": "/api/auth",
             "courses": "/api/courses",

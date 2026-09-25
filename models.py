@@ -2,6 +2,10 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, 
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
 import enum
+from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
+from sqlalchemy.orm import relationship
+from database import Base
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -209,3 +213,26 @@ class ServiceOrder(Base):
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+# ========== ADD THIS MODEL TO YOUR models.py ==========
+
+class SubscriptionCharge(Base):
+    """
+    Tracks all auto-charge attempts for subscriptions
+    Used by auto_charge_scheduler.py for retry logic and tracking
+    """
+    __tablename__ = "subscription_charges"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), index=True)
+    amount = Column(Float, nullable=False)
+    status = Column(String, default='pending')  # pending, success, failed
+    square_payment_id = Column(String, nullable=True)
+    error_message = Column(Text, nullable=True)
+    attempted_at = Column(DateTime, default=datetime.utcnow, index=True)
+    next_retry_at = Column(DateTime, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship
+    enrollment = relationship("CourseEnrollment", backref="charges")

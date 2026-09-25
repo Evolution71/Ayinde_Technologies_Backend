@@ -1,6 +1,7 @@
 """
 Auto-charge scheduler for trial subscriptions
-Run with: python auto_charge_scheduler.py
+Updated to use environment variables instead of hardcoded tokens
+Run with: python -m uvicorn main:app (starts automatically)
 """
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
@@ -9,18 +10,30 @@ from models import CourseEnrollment, SubscriptionCharge, Payment, Course
 import square
 from sqlalchemy import func
 import logging
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-SQUARE_ACCESS_TOKEN = "YOUR_SQUARE_ACCESS_TOKEN"  # Set from env
-SQUARE_LOCATION_ID = "YOUR_SQUARE_LOCATION_ID"
+# Get from environment (set in Railway)
+SQUARE_ACCESS_TOKEN = os.getenv("SQUARE_ACCESS_TOKEN")
+SQUARE_LOCATION_ID = os.getenv("SQUARE_LOCATION_ID")
+
+# Validate on startup
+if not SQUARE_ACCESS_TOKEN or not SQUARE_LOCATION_ID:
+    logger.warning("⚠️ Square credentials not configured. Auto-charge disabled.")
+    SQUARE_ACCESS_TOKEN = None
+    SQUARE_LOCATION_ID = None
 
 def auto_charge_expiring_trials():
     """
-    Run daily at midnight UTC
+    Run daily at midnight UTC (00:00)
     Charge cards for enrollments where trial_ends_at == today
     """
+    if not SQUARE_ACCESS_TOKEN or not SQUARE_LOCATION_ID:
+        logger.warning("[Auto-Charge] Square credentials not configured. Skipping.")
+        return
+    
     db = SessionLocal()
     
     try:
@@ -84,7 +97,7 @@ def auto_charge_expiring_trials():
                         amount=course.price,
                         status='success',
                         payment_method='square_auto_charge',
-                        square_payment_id=payment_id,
+                        transaction_id=payment_id,
                         created_at=datetime.utcnow()
                     )
                     
@@ -138,9 +151,13 @@ def auto_charge_expiring_trials():
 
 def retry_failed_charges():
     """
-    Run daily at 1 AM UTC
+    Run daily at 01:00 UTC
     Retry failed charges that are ready for retry
     """
+    if not SQUARE_ACCESS_TOKEN or not SQUARE_LOCATION_ID:
+        logger.warning("[Retry-Charge] Square credentials not configured. Skipping.")
+        return
+    
     db = SessionLocal()
     
     try:
@@ -204,20 +221,33 @@ def retry_failed_charges():
         db.close()
 
 
-if __name__ == '__main__':
-    scheduler = BackgroundScheduler()
+# Global scheduler instance
+scheduler = BackgroundScheduler()
+
+def start_scheduler():
+    """Called from main.py on startup"""
+    if scheduler.running:
+        return
     
     # Run auto-charge every day at 00:00 UTC
-    scheduler.add_job(auto_charge_expiring_trials, 'cron', hour=0, minute=0, id='auto_charge_job')
+    scheduler.add_job(auto_charge_expiring_trials, 'cron', hour=0, minute=0, id='auto_charge_job', replace_existing=True)
     
     # Run retry at 01:00 UTC
-    scheduler.add_job(retry_failed_charges, 'cron', hour=1, minute=0, id='retry_charge_job')
+    scheduler.add_job(retry_failed_charges, 'cron', hour=1, minute=0, id='retry_charge_job', replace_existing=True)
     
     logger.info("✅ Subscription auto-charge scheduler started")
+    logger.info("   → Auto-charge runs daily at 00:00 UTC")
+    logger.info("   → Retry runs daily at 01:00 UTC")
     scheduler.start()
-    
+
+
+if __name__ == '__main__':
+    start_scheduler()
     try:
-        scheduler.indefinite()
+        # Keep scheduler running
+        import time
+        while True:
+            time.sleep(1)
     except KeyboardInterrupt:
         scheduler.shutdown()
         logger.info("Scheduler stopped")
