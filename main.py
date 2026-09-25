@@ -1,186 +1,214 @@
-from fastapi import FastAPI, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+"""
+Ayinde Technologies - FastAPI Backend
+
+Main application file with CORS, routers, and middleware.
+
+Routers:
+- auth: User authentication (register, login, logout)
+- courses: Course endpoints and enrollments
+- payments: Payment processing
+- captcha: Captcha verification
+
+Database: Supabase PostgreSQL
+Auth: JWT tokens (stored in browser as 'ayinde_token')
+"""
+
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 import logging
 import os
+from datetime import datetime, timezone
 
-# Database
-from database import engine, Base
-
-# Models
-import models
-
-# Routers
+# Import routers
 from routers.auth import router as auth_router
 from routers.courses import router as courses_router
-from routers.services import router as services_router
-from routers.team import router as team_router
-from routers.projects import router as projects_router
-from routers.contact import router as contact_router
-from routers.lessons import router as lessons_router
 from routers.payments import router as payments_router
 from routers.captcha import router as captcha_router
 
-# Create tables
-Base.metadata.create_all(bind=engine)
-
-# Initialize app
-app = FastAPI(
-    title="Ayinde Technologies API",
-    description="Premium Web & App Development Services",
-    version="1.0.0"
-)
+# Import database
+from database import engine, get_db
+from models import Base
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ========== CORS CONFIGURATION ==========
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="Ayinde Technologies API",
+    description="Backend for Ayinde Technologies platform",
+    version="1.0.0"
+)
+
+# ════════════════════════════════════════════════════════════════════════════════
+# 🔴 CRITICAL: CORS MIDDLEWARE MUST BE FIRST!
+# ════════════════════════════════════════════════════════════════════════════════
+
 allow_origins = [
-    'http://localhost:3000',
-    'http://localhost:8000',
-    'https://ayindetechnologies.com',
-    'https://www.ayindetechnologies.com'
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "https://www.ayindetechnologies.com",
+    "https://ayindetechnologies.com",
 ]
 
-print(f"✅ CORS enabled for: {allow_origins}")
-
-# ✅ CORS MIDDLEWARE - MUST BE FIRST, BEFORE ROUTES
+# ✅ CORS MIDDLEWARE - MUST BE BEFORE ALL OTHER MIDDLEWARE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],  # ✅ ADDED - expose all response headers
-    max_age=3600,  # ✅ ADDED - cache preflight for 1 hour
+    allow_methods=["*"],  # Allow all methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
+    allow_headers=["*"],  # Allow all headers
+    expose_headers=["*"],  # Expose all response headers to client
+    max_age=3600,  # Cache preflight for 1 hour
 )
 
-# ✅ PREFLIGHT HANDLER - REQUIRED FOR CORS
+logger.info("[CORS] Middleware configured for origins: " + ", ".join(allow_origins))
+
+# ════════════════════════════════════════════════════════════════════════════════
+# OPTIONS PREFLIGHT HANDLER - Handles CORS preflight requests
+# ════════════════════════════════════════════════════════════════════════════════
+
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
-    """Handle CORS preflight requests for all routes"""
+    """
+    Handle CORS preflight OPTIONS requests.
+    
+    Browser sends OPTIONS request before actual request to check CORS headers.
+    This endpoint must respond with proper CORS headers for preflight to succeed.
+    """
     return JSONResponse(
         content={},
-        status_code=status.HTTP_200_OK,
+        status_code=200,
         headers={
             "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Credentials": "true",
             "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-            "Access-Control-Allow-Headers": "*",
-        },
+            "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept",
+            "Access-Control-Max-Age": "3600",
+        }
     )
 
-# ========== ROUTERS ==========
-# Include all routers
-try:
-    app.include_router(auth_router)
-    logger.info("✅ Auth router loaded")
-except Exception as e:
-    logger.error(f"❌ Auth router error: {e}")
+logger.info("[OPTIONS] Preflight handler registered for all routes")
 
-try:
-    app.include_router(courses_router)
-    logger.info("✅ Courses router loaded")
-except Exception as e:
-    logger.error(f"❌ Courses router error: {e}")
+# ════════════════════════════════════════════════════════════════════════════════
+# ROUTERS
+# ════════════════════════════════════════════════════════════════════════════════
 
-try:
-    app.include_router(services_router)
-    logger.info("✅ Services router loaded")
-except Exception as e:
-    logger.error(f"❌ Services router error: {e}")
+app.include_router(auth_router)
+app.include_router(courses_router)
+app.include_router(payments_router)
+app.include_router(captcha_router)
 
-try:
-    app.include_router(team_router)
-    logger.info("✅ Team router loaded")
-except Exception as e:
-    logger.error(f"❌ Team router error: {e}")
+logger.info("[Routers] Auth router loaded")
+logger.info("[Routers] Courses router loaded")
+logger.info("[Routers] Payments router loaded")
+logger.info("[Routers] Captcha router loaded")
 
-try:
-    app.include_router(projects_router)
-    logger.info("✅ Projects router loaded")
-except Exception as e:
-    logger.error(f"❌ Projects router error: {e}")
-
-try:
-    app.include_router(contact_router)
-    logger.info("✅ Contact router loaded")
-except Exception as e:
-    logger.error(f"❌ Contact router error: {e}")
-
-try:
-    app.include_router(lessons_router)
-    logger.info("✅ Lessons router loaded")
-except Exception as e:
-    logger.error(f"❌ Lessons router error: {e}")
-
-try:
-    app.include_router(payments_router)
-    logger.info("✅ Payments router loaded")
-except Exception as e:
-    logger.error(f"❌ Payments router error: {e}")
-
-try:
-    app.include_router(captcha_router)
-    logger.info("✅ Captcha router loaded")
-except Exception as e:
-    logger.error(f"❌ Captcha router error: {e}")
-
-# ========== HEALTH CHECK ==========
-@app.get("/health")
-async def health_check():
-    """API health check endpoint"""
-    return {
-        "status": "healthy",
-        "service": "Ayinde Technologies API",
-        "version": "1.0.0"
-    }
+# ════════════════════════════════════════════════════════════════════════════════
+# HEALTH CHECK ENDPOINTS
+# ════════════════════════════════════════════════════════════════════════════════
 
 @app.get("/")
 async def root():
-    """API root endpoint"""
+    """Root endpoint - health check."""
     return {
-        "message": "Welcome to Ayinde Technologies API",
-        "version": "1.0.0",
-        "endpoints": {
-            "auth": "/api/auth",
-            "courses": "/api/courses",
-            "services": "/api/services",
-            "team": "/api/team",
-            "projects": "/api/projects",
-            "contact": "/api/contact",
-            "lessons": "/api/lessons",
-            "payments": "/api/payments",
-            "captcha": "/api/captcha"
-        }
+        "status": "running",
+        "message": "Ayinde Technologies API is live",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "version": "1.0.0"
     }
 
-# ========== ERROR HANDLERS ==========
+
+@app.get("/health/")
+async def health():
+    """Health check endpoint."""
+    return {
+        "status": "healthy",
+        "service": "ayinde-backend",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.get("/api/health/")
+async def api_health():
+    """API health check endpoint."""
+    try:
+        # Try to connect to database
+        db = next(get_db())
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"[Health] Database connection failed: {str(e)}")
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": str(e),
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        )
+
+# ════════════════════════════════════════════════════════════════════════════════
+# ERROR HANDLERS
+# ════════════════════════════════════════════════════════════════════════════════
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """Handle HTTP exceptions with CORS headers."""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    logger.error(f"Unhandled error: {str(exc)}")
+async def general_exception_handler(request, exc):
+    """Handle all other exceptions."""
+    logger.error(f"[Error] Unhandled exception: {type(exc).__name__}: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "Internal server error"}
+        content={"detail": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+        }
     )
 
-# ========== STARTUP ==========
+# ════════════════════════════════════════════════════════════════════════════════
+# STARTUP EVENT
+# ════════════════════════════════════════════════════════════════════════════════
+
 @app.on_event("startup")
 async def startup_event():
-    logger.info("🚀 Ayinde Technologies API Started")
-    logger.info(f"📌 CORS Origins: {', '.join(allow_origins)}")
-    logger.info("✅ All routers registered")
+    """Log startup information."""
+    logger.info("════════════════════════════════════════════════════════════════════════════════")
+    logger.info("🚀 Ayinde Technologies API Starting")
+    logger.info("════════════════════════════════════════════════════════════════════════════════")
+    logger.info(f"[Startup] Database URL: {os.getenv('DATABASE_URL', 'NOT SET')[:50]}...")
+    logger.info(f"[Startup] Environment: {os.getenv('ENVIRONMENT', 'production')}")
+    logger.info(f"[Startup] Allowed Origins: {', '.join(allow_origins)}")
+    logger.info("[Startup] ✅ Auth router loaded")
+    logger.info("[Startup] ✅ Courses router loaded")
+    logger.info("[Startup] ✅ Payments router loaded")
+    logger.info("[Startup] ✅ Captcha router loaded")
+    logger.info("[Startup] ✅ CORS middleware configured")
+    logger.info("[Startup] ✅ OPTIONS handler registered")
+    logger.info("════════════════════════════════════════════════════════════════════════════════")
+    logger.info("🟢 Ayinde Technologies API is ONLINE")
+    logger.info("════════════════════════════════════════════════════════════════════════════════")
 
-if __name__ == "__main__":
-    import uvicorn
-    
-    port = int(os.getenv("PORT", 8000))
-    
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=False,
-        log_level="info"
-    )
+# ════════════════════════════════════════════════════════════════════════════════
+# For local testing with uvicorn:
+# uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# ════════════════════════════════════════════════════════════════════════════════
