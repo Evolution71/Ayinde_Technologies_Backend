@@ -1,108 +1,63 @@
-"""
-Ayinde Technologies API
-FastAPI backend with authentication, courses, and subscription system
-"""
-
-import os
-import sys
-import logging
-from pathlib import Path
-from contextlib import asynccontextmanager
-from datetime import datetime
-
 from fastapi import FastAPI, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+import logging
+import os
 
-from database import get_db, engine
+# Database
+from database import engine, Base
 
-# ============================================================
-# LOGGING
-# ============================================================
+# Models
+import models
+
+# Routers
+from routers.auth import router as auth_router
+from routers.courses import router as courses_router
+from routers.services import router as services_router
+from routers.team import router as team_router
+from routers.projects import router as projects_router
+from routers.contact import router as contact_router
+from routers.lessons import router as lessons_router
+from routers.payments import router as payments_router
+from routers.captcha import router as captcha_router
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# Initialize app
+app = FastAPI(
+    title="Ayinde Technologies API",
+    description="Premium Web & App Development Services",
+    version="1.0.0"
+)
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ============================================================
-# ENVIRONMENT VARIABLES
-# ============================================================
-ALLOWED_ORIGINS = os.getenv(
-    "ALLOWED_ORIGINS",
-    "https://www.ayindetechnologies.com,https://ayindetechnologies.com,http://localhost:3000,http://localhost:8000"
-).split(",")
+# ========== CORS CONFIGURATION ==========
+allow_origins = [
+    'http://localhost:3000',
+    'http://localhost:8000',
+    'https://ayindetechnologies.com',
+    'https://www.ayindetechnologies.com'
+]
 
-# Clean up whitespace in origins
-ALLOWED_ORIGINS = [origin.strip() for origin in ALLOWED_ORIGINS]
+print(f"✅ CORS enabled for: {allow_origins}")
 
-PORT = int(os.getenv("PORT", 8000))
-ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-
-# ============================================================
-# STARTUP & SHUTDOWN EVENTS
-# ============================================================
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Handle startup and shutdown events"""
-    
-    # ===== STARTUP =====
-    logger.info("🚀 Ayinde Technologies API starting...")
-    
-    # Log CORS configuration
-    logger.info(f"✅ CORS enabled for: {ALLOWED_ORIGINS}")
-    
-    # Log environment
-    logger.info(f"📌 Environment: {ENVIRONMENT}")
-    logger.info(f"📌 Server port: {PORT}")
-    
-    # Try to start auto-charge scheduler (optional)
-    try:
-        sys.path.insert(0, str(Path(__file__).parent))
-        from auto_charge_scheduler import start_scheduler
-        start_scheduler()
-        logger.info("✅ Auto-charge scheduler started")
-    except ImportError:
-        logger.warning("⚠️ auto_charge_scheduler not found - auto-charge disabled")
-    except Exception as e:
-        logger.error(f"❌ Failed to start scheduler: {e}")
-    
-    # Register all routers
-    logger.info("✅ All routers registered")
-    
-    yield
-    
-    # ===== SHUTDOWN =====
-    logger.info("🛑 Shutting down...")
-
-
-# ============================================================
-# CREATE FASTAPI APP
-# ============================================================
-
-app = FastAPI(
-    title="Ayinde Technologies API",
-    description="Backend for Ayinde Technologies platform",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# ============================================================
-# CORS MIDDLEWARE (MUST BE FIRST)
-# ============================================================
-
+# ✅ CORS MIDDLEWARE - MUST BE FIRST, BEFORE ROUTES
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    allow_origins=allow_origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods: GET, POST, PUT, DELETE, PATCH, OPTIONS
-    allow_headers=["*"],  # Allow all headers
-    expose_headers=["*"],  # Expose all response headers
-    max_age=3600,  # Cache preflight for 1 hour
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"],  # ✅ ADDED - expose all response headers
+    max_age=3600,  # ✅ ADDED - cache preflight for 1 hour
 )
 
-# ============================================================
-# OPTIONS HANDLER FOR PREFLIGHT
-# ============================================================
-
+# ✅ PREFLIGHT HANDLER - REQUIRED FOR CORS
 @app.options("/{full_path:path}")
 async def options_handler(full_path: str):
     """Handle CORS preflight requests for all routes"""
@@ -116,94 +71,116 @@ async def options_handler(full_path: str):
         },
     )
 
-# ============================================================
-# ROUTERS
-# ============================================================
-
-# Import routers
+# ========== ROUTERS ==========
+# Include all routers
 try:
-    from routers import courses, services, captcha
-    app.include_router(courses.router)
-    app.include_router(services.router)
-    app.include_router(captcha.router)
-    logger.info("✅ Routers included: courses, services, captcha")
-except ImportError as e:
-    logger.error(f"❌ Failed to import routers: {e}")
+    app.include_router(auth_router)
+    logger.info("✅ Auth router loaded")
+except Exception as e:
+    logger.error(f"❌ Auth router error: {e}")
 
-# Import auth router if it exists
 try:
-    import auth
-    if hasattr(auth, 'router'):
-        app.include_router(auth.router)
-        logger.info("✅ Auth router included")
-except ImportError:
-    logger.warning("⚠️ Auth module not found")
+    app.include_router(courses_router)
+    logger.info("✅ Courses router loaded")
+except Exception as e:
+    logger.error(f"❌ Courses router error: {e}")
 
-# ============================================================
-# HEALTH CHECK
-# ============================================================
+try:
+    app.include_router(services_router)
+    logger.info("✅ Services router loaded")
+except Exception as e:
+    logger.error(f"❌ Services router error: {e}")
 
-@app.get("/health/")
+try:
+    app.include_router(team_router)
+    logger.info("✅ Team router loaded")
+except Exception as e:
+    logger.error(f"❌ Team router error: {e}")
+
+try:
+    app.include_router(projects_router)
+    logger.info("✅ Projects router loaded")
+except Exception as e:
+    logger.error(f"❌ Projects router error: {e}")
+
+try:
+    app.include_router(contact_router)
+    logger.info("✅ Contact router loaded")
+except Exception as e:
+    logger.error(f"❌ Contact router error: {e}")
+
+try:
+    app.include_router(lessons_router)
+    logger.info("✅ Lessons router loaded")
+except Exception as e:
+    logger.error(f"❌ Lessons router error: {e}")
+
+try:
+    app.include_router(payments_router)
+    logger.info("✅ Payments router loaded")
+except Exception as e:
+    logger.error(f"❌ Payments router error: {e}")
+
+try:
+    app.include_router(captcha_router)
+    logger.info("✅ Captcha router loaded")
+except Exception as e:
+    logger.error(f"❌ Captcha router error: {e}")
+
+# ========== HEALTH CHECK ==========
+@app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """API health check endpoint"""
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "environment": ENVIRONMENT
+        "service": "Ayinde Technologies API",
+        "version": "1.0.0"
     }
-
-# ============================================================
-# ROOT ENDPOINT
-# ============================================================
 
 @app.get("/")
 async def root():
-    """Root endpoint"""
+    """API root endpoint"""
     return {
-        "message": "Ayinde Technologies API",
+        "message": "Welcome to Ayinde Technologies API",
         "version": "1.0.0",
-        "status": "running"
-    }
-
-# ============================================================
-# API ROOT
-# ============================================================
-
-@app.get("/api/")
-async def api_root():
-    """API root"""
-    return {
-        "message": "Ayinde Technologies API v1",
         "endpoints": {
-            "auth": "/api/auth/",
-            "courses": "/api/courses/",
-            "services": "/api/services/",
-            "captcha": "/api/captcha/",
-            "health": "/health/"
+            "auth": "/api/auth",
+            "courses": "/api/courses",
+            "services": "/api/services",
+            "team": "/api/team",
+            "projects": "/api/projects",
+            "contact": "/api/contact",
+            "lessons": "/api/lessons",
+            "payments": "/api/payments",
+            "captcha": "/api/captcha"
         }
     }
 
-# ============================================================
-# STARTUP LOGGING
-# ============================================================
+# ========== ERROR HANDLERS ==========
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    logger.error(f"Unhandled error: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"}
+    )
 
+# ========== STARTUP ==========
 @app.on_event("startup")
-async def startup():
-    """Called when app starts"""
-    logger.info("🚀 Ayinde Technologies API started")
-    logger.info(f"📌 CORS Origins: {', '.join(ALLOWED_ORIGINS)}")
-    logger.info("✅ All systems operational")
+async def startup_event():
+    logger.info("🚀 Ayinde Technologies API Started")
+    logger.info(f"📌 CORS Origins: {', '.join(allow_origins)}")
+    logger.info("✅ All routers registered")
 
-# ============================================================
-# RUN INSTRUCTIONS
-# ============================================================
 if __name__ == "__main__":
     import uvicorn
+    
+    port = int(os.getenv("PORT", 8000))
     
     uvicorn.run(
         "main:app",
         host="0.0.0.0",
-        port=PORT,
-        reload=ENVIRONMENT == "development",
+        port=port,
+        reload=False,
         log_level="info"
     )
