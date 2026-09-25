@@ -66,7 +66,7 @@ class Lesson(Base):
     resources = Column(JSON, nullable=True)  # Store resources as JSON
     has_quiz = Column(Boolean, default=False)
     quiz_data = Column(JSON, nullable=True)  # Store quiz data as JSON
-    is_published = Column(Boolean, default=False)  # ✅ REQUIRED BY ROUTER - FIXES THE ERROR!
+    is_published = Column(Boolean, default=False)  # ✅ REQUIRED BY ROUTER
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
