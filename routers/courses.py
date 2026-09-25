@@ -1,17 +1,21 @@
 """
-Courses, lessons, and enrollment endpoints.
+Courses, lessons, and enrollment endpoints with subscription system.
 
 Features:
 - Browse courses (public or logged in)
 - Free 30-day trial for all courses
 - Track progress through lessons
-- Payment integration (optional)
+- Payment integration (Square)
+- Auto-charge after trial ends
+- Cancel subscription
 
 Endpoints:
 - GET /api/courses - List all courses
-- GET /api/courses/me/enrollments - Get user's enrolled courses (NEW)
+- GET /api/courses/me/enrollments - Get user's enrolled courses
 - GET /api/courses/{id} - Get course details (requires enrollment)
-- POST /api/courses/{id}/enroll - Start free trial
+- GET /api/courses/{id}/enrollment-status - Get enrollment & trial status
+- POST /api/courses/{id}/enroll - Start free trial (with card)
+- POST /api/courses/{id}/cancel - Cancel subscription
 - GET /api/courses/{id}/lessons/{lesson_id} - Get lesson
 - POST /api/courses/{id}/lessons/{lesson_id}/complete - Mark complete
 - GET /api/courses/{id}/progress - Get user's course progress
@@ -24,7 +28,7 @@ from typing import List, Optional
 
 from database import get_db
 from auth import get_current_user, get_current_user_optional
-from models import User, Course, CourseEnrollment, Lesson, LessonProgress
+from models import User, Course, CourseEnrollment, Lesson, LessonProgress, Payment
 import schemas
 
 router = APIRouter(prefix="/api/courses", tags=["courses"])
@@ -53,11 +57,14 @@ async def get_my_enrollments(
             {
                 "id": e.id,
                 "course_id": e.course_id,
-                "user_id": e.user_id
+                "user_id": e.user_id,
+                "status": e.status,
+                "trial_ends_at": e.trial_ends_at
             }
             for e in enrollments
         ]
     }
+
 
 # ========== LIST COURSES ==========
 
@@ -225,7 +232,62 @@ async def get_course_detail(
     )
 
 
-# ========== ENROLL IN COURSE ==========
+# ========== GET ENROLLMENT STATUS ==========
+
+@router.get("/{course_id}/enrollment-status/")
+async def get_enrollment_status(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Get enrollment and trial status for a course.
+    
+    Returns: Trial end date, subscription status, payment method
+    
+    Errors:
+    - 404: Course not found
+    - 403: Not enrolled
+    """
+    
+    course = db.query(Course).filter(Course.id == course_id).first()
+    if not course:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Course not found"
+        )
+    
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course_id
+    ).first()
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enrolled in this course"
+        )
+    
+    now = datetime.utcnow()
+    days_remaining = 0
+    
+    if enrollment.status == "trial" and enrollment.trial_ends_at:
+        days_remaining = (enrollment.trial_ends_at - now).days
+        if days_remaining < 0:
+            enrollment.status = "expired"
+            db.commit()
+    
+    return {
+        "course_id": course_id,
+        "status": enrollment.status,
+        "trial_ends_at": enrollment.trial_ends_at,
+        "days_remaining": max(0, days_remaining),
+        "has_payment_method": bool(enrollment.payment_method_id),
+        "enrolled_at": enrollment.enrolled_at
+    }
+
+
+# ========== ENROLL IN COURSE (with card) ==========
 
 @router.post("/{course_id}/enroll/")
 async def enroll_in_course(
@@ -240,6 +302,7 @@ async def enroll_in_course(
     - 30-day free access to all course content
     - After trial ends, user must pay to continue
     - Can re-enroll if access expires
+    - Frontend will collect card info for auto-charge
     
     Returns: Enrollment confirmation with trial end date
     
@@ -265,24 +328,131 @@ async def enroll_in_course(
         return {
             "status": "already_enrolled",
             "message": f"You already have {existing.status} access to this course.",
-            "enrollment": schemas.CourseEnrollmentOut.from_attributes(existing)
+            "enrollment_id": existing.id
         }
     
     # Create new enrollment with 30-day trial
     trial_days = course.trial_duration_days or 30
     enrollment = CourseEnrollment(
         user_id=current_user.id,
-        course_id=course_id
+        course_id=course_id,
+        status="trial",
+        enrolled_at=datetime.utcnow(),
+        trial_ends_at=datetime.utcnow() + timedelta(days=trial_days),
+        progress_percentage=0.0
     )
     
     db.add(enrollment)
     db.commit()
     db.refresh(enrollment)
     
+    print(f"[enrollment] Trial started: user_id={current_user.id}, course_id={course_id}, trial_ends={enrollment.trial_ends_at}")
+    
     return {
         "status": "success",
         "message": f"Welcome to {course.title}! Your {trial_days}-day free trial has started.",
-        "enrollment_id": enrollment.id
+        "enrollment_id": enrollment.id,
+        "trial_ends_at": enrollment.trial_ends_at,
+        "next_step": "add_payment_method"  # Frontend: show card form
+    }
+
+
+# ========== SAVE PAYMENT METHOD ==========
+
+@router.post("/{course_id}/save-payment-method/")
+async def save_payment_method(
+    course_id: int,
+    request_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Save Square payment token for auto-charging after trial.
+    
+    Requires:
+    - nonce: Square payment token (from Web Payments SDK)
+    - billing_postal_code: Optional
+    - billing_country: Optional
+    
+    Returns: Confirmation
+    """
+    
+    nonce = request_data.get('nonce')
+    if not nonce:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="nonce (payment token) is required"
+        )
+    
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course_id
+    ).first()
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enrolled in this course"
+        )
+    
+    # Store the Square customer/card token
+    enrollment.payment_method_id = nonce
+    db.commit()
+    
+    print(f"[payment] Card saved for auto-charge: enrollment_id={enrollment.id}, trial_ends={enrollment.trial_ends_at}")
+    
+    return {
+        "status": "success",
+        "message": "Payment method saved. Your card will be charged on trial expiration.",
+        "trial_ends_at": enrollment.trial_ends_at
+    }
+
+
+# ========== CANCEL SUBSCRIPTION ==========
+
+@router.post("/{course_id}/cancel/")
+async def cancel_subscription(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Cancel course subscription.
+    
+    Effects:
+    - Marks enrollment as cancelled
+    - User loses access after current period
+    - Card will NOT be charged on trial end
+    
+    Returns: Confirmation
+    """
+    
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course_id
+    ).first()
+    
+    if not enrollment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enrolled in this course"
+        )
+    
+    if enrollment.status == "cancelled":
+        return {
+            "status": "already_cancelled",
+            "message": "This subscription is already cancelled."
+        }
+    
+    enrollment.status = "cancelled"
+    db.commit()
+    
+    print(f"[subscription] Cancelled: enrollment_id={enrollment.id}")
+    
+    return {
+        "status": "success",
+        "message": "Subscription cancelled. Your access will end on your trial/subscription expiration date.",
+        "access_until": enrollment.trial_ends_at or enrollment.access_expires_at
     }
 
 
