@@ -47,44 +47,57 @@ async def create_payment_intent(
     - course_title: Course name
     
     Errors:
-    - 400: Missing course_id
+    - 400: Missing course_id or user not enrolled
     - 404: Course not found
     - 403: User not enrolled in course
+    - 500: Server error
     """
     
     try:
+        # Debug logging
+        logger.info(f"[payments] create-intent request from user {current_user.id}: {request_data}")
+        
         course_id = request_data.get('course_id')
         if not course_id:
+            logger.warning(f"[payments] Missing course_id in request")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="course_id is required"
             )
         
         # Get course
+        logger.info(f"[payments] Looking for course {course_id}")
         course = db.query(Course).filter(Course.id == course_id).first()
         if not course:
-            logger.warning(f"[payments] Course not found: {course_id}")
+            logger.warning(f"[payments] Course {course_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="Course not found"
+                detail=f"Course {course_id} not found"
             )
         
+        logger.info(f"[payments] Found course: {course.title}")
+        
         # Check enrollment exists
+        logger.info(f"[payments] Checking enrollment for user {current_user.id}, course {course_id}")
         enrollment = db.query(CourseEnrollment).filter(
             CourseEnrollment.user_id == current_user.id,
             CourseEnrollment.course_id == course_id
         ).first()
         
         if not enrollment:
-            logger.warning(f"[payments] User {current_user.id} not enrolled in course {course_id}")
+            logger.warning(f"[payments] No enrollment found for user {current_user.id}, course {course_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You must enroll in this course first"
+                detail=f"You must enroll in course {course_id} first (trial period)"
             )
+        
+        logger.info(f"[payments] Found enrollment: {enrollment.id}, status: {enrollment.status}")
         
         # Get amount from request or use course price
         amount = request_data.get('amount') or course.price or 99.99
         currency = request_data.get('currency', 'USD')
+        
+        logger.info(f"[payments] Creating payment: amount={amount}, currency={currency}")
         
         # Create payment record
         payment = Payment(
@@ -101,7 +114,7 @@ async def create_payment_intent(
         db.commit()
         db.refresh(payment)
         
-        logger.info(f"[payments] Payment intent created: id={payment.id}, course_id={course_id}, amount={amount}")
+        logger.info(f"[payments] Payment created: id={payment.id}, amount={amount}")
         
         return {
             "status": "success",
@@ -113,12 +126,13 @@ async def create_payment_intent(
         }
         
     except HTTPException:
+        # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(f"[payments] create-intent error: {str(e)}")
+        logger.error(f"[payments] create-intent error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create payment intent"
+            detail=f"Failed to create payment intent: {str(e)}"
         )
 
 
@@ -155,7 +169,10 @@ async def verify_payment(
         payment_id = request_data.get('payment_id')
         nonce = request_data.get('nonce')
         
+        logger.info(f"[payments] verify request: payment_id={payment_id}, user={current_user.id}")
+        
         if not payment_id or not nonce:
+            logger.warning(f"[payments] Missing payment_id or nonce")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="payment_id and nonce are required"
@@ -168,13 +185,13 @@ async def verify_payment(
         ).first()
         
         if not payment:
-            logger.warning(f"[payments] Payment not found: {payment_id} for user {current_user.id}")
+            logger.warning(f"[payments] Payment {payment_id} not found for user {current_user.id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Payment not found"
             )
         
-        logger.info(f"[payments] Verifying payment: {payment_id}, nonce={nonce[:20]}...")
+        logger.info(f"[payments] Verifying payment {payment_id}, nonce={nonce[:20]}...")
         
         # ✅ TODO: In production, call Square API here to verify the nonce and charge
         # For now, mark as completed (for testing)
@@ -210,10 +227,10 @@ async def verify_payment(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[payments] verify error: {str(e)}")
+        logger.error(f"[payments] verify error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Payment verification failed"
+            detail=f"Payment verification failed: {str(e)}"
         )
 
 
@@ -249,7 +266,7 @@ async def get_payment_status(
         ).first()
         
         if not payment:
-            logger.warning(f"[payments] Payment not found: {payment_id} for user {current_user.id}")
+            logger.warning(f"[payments] Payment {payment_id} not found for user {current_user.id}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Payment not found"
@@ -269,10 +286,10 @@ async def get_payment_status(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[payments] get_payment_status error: {str(e)}")
+        logger.error(f"[payments] get_payment_status error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to get payment status"
+            detail=f"Failed to get payment status: {str(e)}"
         )
 
 
@@ -337,8 +354,8 @@ async def refund_payment(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"[payments] refund error: {str(e)}")
+        logger.error(f"[payments] refund error: {type(e).__name__}: {str(e)}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Refund failed"
+            detail=f"Refund failed: {str(e)}"
         )
