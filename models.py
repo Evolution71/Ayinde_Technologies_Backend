@@ -1,238 +1,328 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Enum, JSON
+"""
+SQLAlchemy ORM models for Ayinde Technologies.
+
+Tables:
+- User (authentication & profile)
+- Course (course catalog)
+- CourseEnrollment (user enrollments with trial/subscription tracking)
+- Payment (payment records - Square, Flutterwave, etc)
+- Lesson (course lessons)
+- LessonProgress (user progress tracking)
+- FAQ (course FAQs)
+"""
+
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON, Text, Numeric
 from sqlalchemy.ext.declarative import declarative_base
-from datetime import datetime
-import enum
-from sqlalchemy import Column, Integer, String, Float, DateTime, ForeignKey, Boolean, Text
 from sqlalchemy.orm import relationship
-from database import Base
-from datetime import datetime
+from datetime import datetime, timezone
 
 Base = declarative_base()
 
-# ========== USER MODEL ==========
+
 class User(Base):
+    """
+    User account table.
+    
+    Fields:
+    - id: Primary key
+    - email: Unique email address
+    - first_name, last_name: Profile info
+    - password_hash: Hashed password (bcrypt)
+    - is_active: Account status
+    - created_at: Account creation date
+    - updated_at: Last update date
+    
+    Relationships:
+    - enrollments: Courses user is enrolled in
+    - payments: User's payment history
+    """
     __tablename__ = "users"
     
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False, default="")
     email = Column(String(255), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)  # ✅ ROUTER EXPECTS THIS NAME
-    created_at = Column(DateTime, default=datetime.utcnow)
+    first_name = Column(String(100))
+    last_name = Column(String(100))
+    password_hash = Column(String(255), nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    enrollments = relationship("CourseEnrollment", back_populates="user")
+    payments = relationship("Payment", back_populates="user")
+    lesson_progress = relationship("LessonProgress", back_populates="user")
 
-# ========== COURSE MODEL ==========
+
 class Course(Base):
+    """
+    Course catalog table.
+    
+    Fields:
+    - id: Primary key
+    - title: Course name
+    - description: Long description
+    - price: Course price in USD
+    - instructor: Instructor name
+    - is_published: Visibility
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - enrollments: Users enrolled in this course
+    - lessons: Course lessons
+    - faqs: Course FAQs
+    - payments: Payments for this course
+    """
     __tablename__ = "courses"
     
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=False, index=True)
     description = Column(Text)
-    price = Column(Float, default=0)
-    currency = Column(String(10), default="USD")
-    icon = Column(String(255), nullable=True)
-    instructor = Column(String(255), nullable=True)
-    duration = Column(String(100), nullable=True)
-    level = Column(String(50), default="Beginner")
-    is_active = Column(Boolean, default=True)  # ✅ ROUTER NEEDS THIS
-    trial_duration_days = Column(Integer, default=30)  # ✅ ROUTER NEEDS THIS
-    trial_end_date = Column(DateTime, nullable=True)  # ✅ ROUTER NEEDS THIS
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    price = Column(Float, default=0.0)
+    instructor = Column(String(255))
+    is_published = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    enrollments = relationship("CourseEnrollment", back_populates="course")
+    lessons = relationship("Lesson", back_populates="course")
+    faqs = relationship("FAQ", back_populates="course")
+    payments = relationship("Payment", back_populates="course")
 
-# ========== COURSE ENROLLMENT MODEL (Routers expect this name) ==========
+
 class CourseEnrollment(Base):
+    """
+    User course enrollment table.
+    
+    Status:
+    - trial: Free trial period (default 30 days)
+    - active: Paid access
+    - expired: Trial/subscription expired
+    - cancelled: User cancelled
+    
+    Fields:
+    - id: Primary key
+    - user_id: User (FK)
+    - course_id: Course (FK)
+    - status: trial, active, expired, cancelled
+    - trial_ends_at: When free trial expires
+    - access_ends_at: When paid access expires
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - user: User who enrolled
+    - course: Course enrolled in
+    - payments: Payments for this enrollment
+    """
     __tablename__ = "enrollments"
     
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    status = Column(String(50), default="trial")  # 'trial', 'active', 'expired', 'payment_failed'
-    trial_ends_at = Column(DateTime, nullable=True)
-    access_expires_at = Column(DateTime, nullable=True)
-    enrolled_at = Column(DateTime, default=datetime.utcnow)  # When enrollment started
-    progress_percentage = Column(Float, default=0)  # Overall course progress
-    last_accessed_at = Column(DateTime, nullable=True)  # Last time accessed
-    payment_method_id = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========== LESSON MODEL ==========
-class Lesson(Base):
-    __tablename__ = "lessons"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    status = Column(String(50), default="trial", index=True)  # trial, active, expired, cancelled
+    trial_ends_at = Column(DateTime)
+    access_ends_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    id = Column(Integer, primary_key=True, index=True)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    title = Column(String(255), nullable=False)
-    description = Column(Text)
-    content_html = Column(Text, nullable=True)  # HTML content
-    video_url = Column(String(255), nullable=True)
-    duration_minutes = Column(Integer, nullable=True)
-    order = Column(Integer, default=0)
-    resources = Column(JSON, nullable=True)  # Store resources as JSON
-    has_quiz = Column(Boolean, default=False)
-    quiz_data = Column(JSON, nullable=True)  # Store quiz data as JSON
-    is_published = Column(Boolean, default=False)  # ✅ REQUIRED BY ROUTER
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # Relationships
+    user = relationship("User", back_populates="enrollments")
+    course = relationship("Course", back_populates="enrollments")
+    payments = relationship("Payment", back_populates="enrollment")
+    lesson_progress = relationship("LessonProgress", back_populates="enrollment")
 
-# ========== LESSON PROGRESS MODEL (Routers expect this name) ==========
-class LessonProgress(Base):
-    __tablename__ = "lesson_progress"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False)
-    is_completed = Column(Boolean, default=False)
-    progress_percentage = Column(Float, default=0)
-    time_spent_seconds = Column(Integer, default=0)  # Track time spent
-    quiz_score = Column(Float, nullable=True)  # Quiz score if completed
-    completed_at = Column(DateTime, nullable=True)  # When lesson was completed
-    last_accessed_at = Column(DateTime, nullable=True)  # Last time accessed
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# ========== PAYMENT MODEL ==========
 class Payment(Base):
+    """
+    Payment transaction table.
+    
+    Supports multiple payment gateways:
+    - Square (square_payment_id, square_receipt_url)
+    - Flutterwave (flutterwave_transaction_id, flutterwave_reference, flw_transaction_id)
+    
+    Status:
+    - pending: Payment initiated, awaiting verification
+    - completed: Payment successful, access granted
+    - failed: Payment failed
+    - refunded: Payment refunded
+    
+    Fields:
+    - id: Primary key
+    - enrollment_id: Enrollment (FK)
+    - user_id: User (FK)
+    - course_id: Course (FK)
+    - tx_ref: Unique transaction reference (for Flutterwave)
+    - amount: Amount charged
+    - currency: Currency (USD, NGN, etc)
+    - status: pending, completed, failed, refunded
+    - payment_method: square, flutterwave, paystack, etc
+    - payment_link: Payment URL (for Flutterwave redirect)
+    - payment_data: Raw response data (JSON)
+    
+    Square fields:
+    - square_payment_id: Square payment ID
+    - square_receipt_url: Receipt URL
+    
+    Flutterwave fields:
+    - flutterwave_transaction_id: Flutterwave transaction ID
+    - flutterwave_reference: Flutterwave reference
+    - flw_transaction_id: Alternative reference
+    
+    Timestamps:
+    - transaction_id: Transaction reference (generic)
+    - paid_at: When payment was confirmed
+    - verified_at: When payment was verified
+    - expires_at: When link expires (Flutterwave)
+    - created_at, updated_at: Record timestamps
+    
+    Relationships:
+    - enrollment: Related enrollment
+    - user: User who paid
+    - course: Course paid for
+    """
     __tablename__ = "payments"
     
     id = Column(Integer, primary_key=True, index=True)
-    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False)
-    amount = Column(Float, nullable=False)
-    currency = Column(String(10), default="USD")
-    status = Column(String(50), default="pending")  # pending, completed, failed
-    payment_method = Column(String(100))  # square, flutterwave, paystack
-    transaction_id = Column(String(255), unique=True, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========== CAPTCHA MODEL ==========
-class Captcha(Base):
-    __tablename__ = "captchas"
+    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
     
-    id = Column(String(36), primary_key=True, index=True)
-    challenge = Column(String(10), nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    expires_at = Column(DateTime, nullable=False)
-
-# ========== SERVICE MODEL ==========
-class Service(Base):
-    __tablename__ = "services"
+    # Transaction references
+    tx_ref = Column(String(255), unique=True, index=True)  # Flutterwave reference
+    transaction_id = Column(String(255), index=True)  # Generic transaction ID
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    description = Column(Text)
-    icon = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========== TEAM MEMBER MODEL ==========
-class TeamMember(Base):
-    __tablename__ = "team_members"
+    # Amount
+    amount = Column(Numeric(10, 2), nullable=False)
+    currency = Column(String(3), default="USD")  # USD, NGN, etc
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    role = Column(String(255))
-    bio = Column(Text)
-    image = Column(String(255), nullable=True)
-    expertise = Column(String(255))
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========== PROJECT MODEL ==========
-class Project(Base):
-    __tablename__ = "projects"
+    # Status and method
+    status = Column(String(50), default="pending", index=True)  # pending, completed, failed, refunded
+    payment_method = Column(String(50))  # square, flutterwave, paystack
     
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(255), nullable=False)
-    client = Column(String(255))
-    category = Column(String(100))
-    description = Column(Text)
-    image = Column(String(255), nullable=True)
-    technologies = Column(Text)
-    results = Column(Text)
-    app_url = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-# ========== CONTACT MESSAGE MODEL ==========
-class ContactMessage(Base):
-    __tablename__ = "contact_messages"
+    # Payment link (for redirect flows)
+    payment_link = Column(String(512))
+    payment_data = Column(JSON)  # Raw response from payment gateway
     
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False)
-    subject = Column(String(255))
-    message = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# ========== SERVICE ORDER MODEL (Premium Services) ==========
-class ServiceOrder(Base):
-    """Premium service order model for Website Pro, Application Pro, and Supreme VIP Platinum"""
-    __tablename__ = "service_orders"
+    # Square-specific
+    square_payment_id = Column(String(255), index=True)
+    square_receipt_url = Column(String(512))
     
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    
-    # Service details
-    tier = Column(String(50), nullable=False)  # website, application, supreme
-    tier_name = Column(String(255), nullable=False)  # "Website Pro", "Application Pro", etc.
-    amount = Column(Float, nullable=False)  # Price in USD
-    currency = Column(String(10), default="USD")
-    payment_option = Column(String(50))  # monthly, annual, threeyear, halfdown
-    discount_percent = Column(Integer, default=0)  # 0, 5, 10, 20
-    period = Column(String(100))  # "/month", "/2 years", "/3 years", etc.
-    
-    # Billing information
-    full_name = Column(String(255), nullable=False)
-    email = Column(String(255), nullable=False)
-    phone = Column(String(20), nullable=True)
-    company = Column(String(255), nullable=True)
-    postal_code = Column(String(20), nullable=False)
-    country = Column(String(2), default="US")
-    
-    # Service duration
-    status = Column(String(50), default="active")  # active, expired, cancelled, suspended
-    service_starts_at = Column(DateTime, default=datetime.utcnow)
-    service_ends_at = Column(DateTime, nullable=False)  # When service expires
-    
-    # Payment information
-    payment_status = Column(String(50), default="pending")  # pending, completed, failed, refunded
-    payment_method = Column(String(50), default="square")  # square, other
-    payment_source_id = Column(String(255), nullable=True)  # Square token
-    transaction_id = Column(String(255), unique=True, nullable=True)  # Unique transaction ID
-    payment_completed_at = Column(DateTime, nullable=True)  # When payment was processed
-    
-    # Cancellation
-    cancelled_at = Column(DateTime, nullable=True)
-    cancellation_reason = Column(Text, nullable=True)
-    
-    # Additional data
-    order_metadata = Column(JSON, default=dict)  # Stores features, IP, user agent, etc.
+    # Flutterwave-specific
+    flutterwave_transaction_id = Column(String(255), index=True)
+    flutterwave_reference = Column(String(255), index=True)
+    flw_transaction_id = Column(String(255), index=True)
     
     # Timestamps
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    paid_at = Column(DateTime)  # When payment was completed
+    verified_at = Column(DateTime)  # When payment was verified
+    expires_at = Column(DateTime)  # When payment link expires
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    enrollment = relationship("CourseEnrollment", back_populates="payments")
+    user = relationship("User", back_populates="payments")
+    course = relationship("Course", back_populates="payments")
 
-# ========== ADD THIS MODEL TO YOUR models.py ==========
 
-class SubscriptionCharge(Base):
+class Lesson(Base):
     """
-    Tracks all auto-charge attempts for subscriptions
-    Used by auto_charge_scheduler.py for retry logic and tracking
+    Course lesson table.
+    
+    Fields:
+    - id: Primary key
+    - course_id: Course (FK)
+    - title: Lesson title
+    - description: Lesson description
+    - content: Lesson content (HTML or Markdown)
+    - video_url: Video URL (optional)
+    - order: Lesson order in course
+    - is_published: Visibility
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - course: Course this lesson belongs to
+    - progress: User progress on this lesson
     """
-    __tablename__ = "subscription_charges"
+    __tablename__ = "lessons"
     
     id = Column(Integer, primary_key=True, index=True)
-    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), index=True)
-    amount = Column(Float, nullable=False)
-    status = Column(String, default='pending')  # pending, success, failed
-    square_payment_id = Column(String, nullable=True)
-    error_message = Column(Text, nullable=True)
-    attempted_at = Column(DateTime, default=datetime.utcnow, index=True)
-    next_retry_at = Column(DateTime, nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    content = Column(Text)
+    video_url = Column(String(512))
+    order = Column(Integer, default=0)
+    is_published = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
-    # Relationship
-    enrollment = relationship("CourseEnrollment", backref="charges")
+    # Relationships
+    course = relationship("Course", back_populates="lessons")
+    progress = relationship("LessonProgress", back_populates="lesson")
+
+
+class LessonProgress(Base):
+    """
+    User lesson progress table.
+    
+    Tracks completion status for each user-lesson pair.
+    
+    Fields:
+    - id: Primary key
+    - user_id: User (FK)
+    - enrollment_id: Enrollment (FK)
+    - lesson_id: Lesson (FK)
+    - is_completed: Lesson completion status
+    - completed_at: When lesson was marked complete
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - user: User
+    - enrollment: Related enrollment
+    - lesson: Lesson
+    """
+    __tablename__ = "lesson_progress"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=False, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=False, index=True)
+    is_completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = relationship("User", back_populates="lesson_progress")
+    enrollment = relationship("CourseEnrollment", back_populates="lesson_progress")
+    lesson = relationship("Lesson", back_populates="progress")
+
+
+class FAQ(Base):
+    """
+    Course FAQ table.
+    
+    Fields:
+    - id: Primary key
+    - course_id: Course (FK)
+    - question: FAQ question
+    - answer: FAQ answer
+    - order: Display order
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - course: Course this FAQ belongs to
+    """
+    __tablename__ = "faqs"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    question = Column(String(512), nullable=False)
+    answer = Column(Text, nullable=False)
+    order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    course = relationship("Course", back_populates="faqs")
