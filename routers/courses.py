@@ -350,7 +350,7 @@ async def get_courses(db: Session = Depends(get_db)):
     """
     Get list of all available courses.
     """
-    courses = db.query(Course).filter(Course.is_active == True).all()
+    courses = db.query(Course).filter(Course.is_published == True).all()
     
     return {
         "success": True,
