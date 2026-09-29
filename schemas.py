@@ -1,6 +1,7 @@
 """
-Pydantic schemas for Ayinde Technologies API.
+Pydantic schemas for Ayinde Technologies API - CORRECTED
 All request/response models with validators for list fields.
+Uses first_name/last_name to match User model schema
 """
 
 from pydantic import BaseModel, Field, field_validator, EmailStr
@@ -21,15 +22,17 @@ class TokenData(BaseModel):
 # ========== AUTH SCHEMAS ==========
 
 class UserBase(BaseModel):
-    name: str
+    first_name: str
+    last_name: str
     email: EmailStr
 
 class UserCreate(UserBase):
     password: str
 
 class UserRegister(BaseModel):
-    """Schema for user registration - includes captcha fields"""
-    name: str
+    """Schema for user registration - matches User model with first_name/last_name"""
+    first_name: str
+    last_name: str
     email: EmailStr
     password: str
     captcha_token: Optional[str] = None
@@ -46,7 +49,7 @@ class UserResponse(UserBase):
     """Schema for user response"""
     id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -62,7 +65,8 @@ class LoginResponse(BaseModel):
     user: UserResponse
 
 class RegisterRequest(BaseModel):
-    name: str
+    first_name: str
+    last_name: str
     email: EmailStr
     password: str
     captcha_token: Optional[str] = None
@@ -95,7 +99,7 @@ class LessonResponse(LessonBase):
     id: int
     course_id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -138,7 +142,7 @@ class CourseResponse(CourseBase):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     lessons: List[LessonResponse] = []
-    
+
     class Config:
         from_attributes = True
 
@@ -156,7 +160,7 @@ class CourseListResponse(BaseModel):
     is_active: bool
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -185,7 +189,7 @@ class EnrollmentResponse(EnrollmentBase):
     id: int
     enrolled_at: Optional[datetime] = None
     trial_ends_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -207,7 +211,7 @@ class ServiceCreate(ServiceBase):
 class ServiceResponse(ServiceBase):
     id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -230,7 +234,7 @@ class TeamMemberCreate(TeamMemberBase):
 class TeamMemberResponse(TeamMemberBase):
     id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -256,7 +260,7 @@ class ProjectCreate(ProjectBase):
 class ProjectResponse(ProjectBase):
     id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -283,7 +287,7 @@ class ContactResponse(BaseModel):
     subject: str
     message: str
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -308,7 +312,7 @@ class PaymentResponse(BaseModel):
     status: str
     square_payment_id: Optional[str] = None
     created_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -330,7 +334,7 @@ class CaptchaGenerateResponse(BaseModel):
     """Response when generating a new captcha challenge"""
     captcha_id: str
     captcha_image: Optional[str] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -344,7 +348,7 @@ class CaptchaVerifyResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     score: Optional[float] = None
-    
+
     class Config:
         from_attributes = True
 
@@ -354,6 +358,6 @@ class CaptchaVerifyResponse(BaseModel):
 class SavePaymentMethodRequest(BaseModel):
     """Request to save a payment method (Square nonce)"""
     nonce: str
-    
+
     class Config:
         from_attributes = True
