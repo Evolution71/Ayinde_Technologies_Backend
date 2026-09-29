@@ -9,6 +9,7 @@ Tables:
 - Lesson (course lessons)
 - LessonProgress (user progress tracking)
 - FAQ (course FAQs)
+- ServiceOrder (service orders/requests from clients)
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON, Text, Numeric
@@ -35,6 +36,7 @@ class User(Base):
     Relationships:
     - enrollments: Courses user is enrolled in
     - payments: User's payment history
+    - service_orders: Service orders placed by user
     """
     __tablename__ = "users"
     
@@ -51,6 +53,7 @@ class User(Base):
     enrollments = relationship("CourseEnrollment", back_populates="user")
     payments = relationship("Payment", back_populates="user")
     lesson_progress = relationship("LessonProgress", back_populates="user")
+    service_orders = relationship("ServiceOrder", back_populates="user")
 
 
 class Course(Base):
@@ -357,3 +360,50 @@ class FAQ(Base):
     
     # Relationships
     course = relationship("Course", back_populates="faqs")
+
+
+class ServiceOrder(Base):
+    """
+    Service order table for custom client services.
+    
+    Tracks orders for consulting, development, design, and other services.
+    
+    Status:
+    - pending: Order received, awaiting review
+    - in_progress: Work started
+    - completed: Work completed
+    - cancelled: Order cancelled
+    
+    Fields:
+    - id: Primary key
+    - user_id: User who placed order (FK)
+    - service_type: Type of service (consulting, development, design, etc)
+    - title: Order title/name
+    - description: Order description/details
+    - status: pending, in_progress, completed, cancelled
+    - price: Service price
+    - currency: Currency (USD, NGN, etc)
+    - payment_status: Payment status (unpaid, paid, partially_paid)
+    - completed_at: When service was completed
+    - created_at, updated_at: Timestamps
+    
+    Relationships:
+    - user: User who placed the order
+    """
+    __tablename__ = "service_orders"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    service_type = Column(String(255), nullable=False, index=True)  # consulting, development, design, etc
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+    status = Column(String(50), default="pending", index=True)  # pending, in_progress, completed, cancelled
+    price = Column(Float, default=0.0)
+    currency = Column(String(3), default="USD")
+    payment_status = Column(String(50), default="unpaid")  # unpaid, paid, partially_paid
+    completed_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    
+    # Relationships
+    user = relationship("User", back_populates="service_orders")
