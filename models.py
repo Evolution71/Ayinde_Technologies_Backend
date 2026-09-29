@@ -62,7 +62,13 @@ class Course(Base):
     - title: Course name
     - description: Long description
     - price: Course price in USD
+    - currency: Currency code (USD, NGN, etc)
     - instructor: Instructor name
+    - level: Course level (Beginner, Intermediate, Advanced)
+    - duration: Course duration (e.g., "4 weeks")
+    - icon: Course icon/image URL
+    - trial_duration_days: Free trial duration in days (default 30)
+    - is_active: Whether course is active
     - is_published: Visibility
     - created_at, updated_at: Timestamps
     
@@ -78,7 +84,13 @@ class Course(Base):
     title = Column(String(255), nullable=False, index=True)
     description = Column(Text)
     price = Column(Float, default=0.0)
+    currency = Column(String(3), default="USD")
     instructor = Column(String(255))
+    level = Column(String(100), default="Beginner")
+    duration = Column(String(255))
+    icon = Column(String(512))
+    trial_duration_days = Column(Integer, default=30)
+    is_active = Column(Boolean, default=True)
     is_published = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
@@ -107,6 +119,10 @@ class CourseEnrollment(Base):
     - status: trial, active, expired, cancelled
     - trial_ends_at: When free trial expires
     - access_ends_at: When paid access expires
+    - payment_method_id: Saved payment method (Square nonce)
+    - progress_percentage: User's progress in course (0-100)
+    - auto_charge_attempted: Whether auto-charge was attempted
+    - last_accessed_at: Last time user accessed course
     - created_at, updated_at: Timestamps
     
     Relationships:
@@ -122,6 +138,11 @@ class CourseEnrollment(Base):
     status = Column(String(50), default="trial", index=True)  # trial, active, expired, cancelled
     trial_ends_at = Column(DateTime)
     access_ends_at = Column(DateTime)
+    payment_method_id = Column(String(255))  # Square nonce - VARCHAR, not UUID
+    progress_percentage = Column(Float, default=0.0)
+    auto_charge_attempted = Column(Boolean, default=False)
+    last_accessed_at = Column(DateTime)
+    enrolled_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     
@@ -235,8 +256,13 @@ class Lesson(Base):
     - title: Lesson title
     - description: Lesson description
     - content: Lesson content (HTML or Markdown)
+    - content_html: HTML version of lesson content
     - video_url: Video URL (optional)
+    - duration_minutes: Lesson duration in minutes
     - order: Lesson order in course
+    - has_quiz: Whether lesson has a quiz
+    - quiz_data: Quiz questions/answers (JSON)
+    - resources: Lesson resources (JSON or links)
     - is_published: Visibility
     - created_at, updated_at: Timestamps
     
@@ -251,8 +277,13 @@ class Lesson(Base):
     title = Column(String(255), nullable=False)
     description = Column(Text)
     content = Column(Text)
+    content_html = Column(Text)
     video_url = Column(String(512))
+    duration_minutes = Column(Integer)
     order = Column(Integer, default=0)
+    has_quiz = Column(Boolean, default=False)
+    quiz_data = Column(JSON)
+    resources = Column(JSON)
     is_published = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
