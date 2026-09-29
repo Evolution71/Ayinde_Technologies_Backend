@@ -8,6 +8,7 @@ Routers:
 - courses: Course endpoints and enrollments
 - payments: Payment processing
 - captcha: Captcha verification
+- services: Service order management
 
 Database: Supabase PostgreSQL
 Auth: JWT tokens (stored in browser as 'ayinde_token')
@@ -26,6 +27,7 @@ from routers.auth import router as auth_router
 from routers.courses import router as courses_router
 from routers.payments import router as payments_router
 from routers.captcha import router as captcha_router
+from routers.services import router as services_router
 
 # Import database
 from database import engine, get_db
@@ -103,11 +105,13 @@ app.include_router(auth_router)
 app.include_router(courses_router)
 app.include_router(payments_router)
 app.include_router(captcha_router)
+app.include_router(services_router)
 
 logger.info("[Routers] Auth router loaded")
 logger.info("[Routers] Courses router loaded")
 logger.info("[Routers] Payments router loaded")
 logger.info("[Routers] Captcha router loaded")
+logger.info("[Routers] Services router loaded")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK ENDPOINTS
@@ -202,6 +206,7 @@ async def startup_event():
     logger.info("[Startup] ✅ Courses router loaded")
     logger.info("[Startup] ✅ Payments router loaded")
     logger.info("[Startup] ✅ Captcha router loaded")
+    logger.info("[Startup] ✅ Services router loaded")
     logger.info("[Startup] ✅ CORS middleware configured")
     logger.info("[Startup] ✅ OPTIONS handler registered")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
