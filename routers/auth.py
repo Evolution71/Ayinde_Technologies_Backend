@@ -1,7 +1,6 @@
 """
 Authentication router - login, register, logout, get current user.
-
-Imports utility functions from the main auth.py module.
+FIXED to match actual User model schema with password_hash and first_name/last_name
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -33,7 +32,8 @@ async def register(
     Register a new user.
 
     Request:
-    - name: User's full name
+    - first_name: User's first name
+    - last_name: User's last name
     - email: User's email (must be unique)
     - password: User's password
 
@@ -51,12 +51,13 @@ async def register(
             detail="Email already registered"
         )
 
-    # Create new user
-    hashed_password = hash_password(user_data.password)
+    # Create new user with correct field names
+    password_hash = hash_password(user_data.password)
     new_user = User(
-        name=user_data.name,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
         email=user_data.email,
-        hashed_password=hashed_password
+        password_hash=password_hash  # ← CORRECT FIELD NAME
     )
 
     db.add(new_user)
@@ -71,7 +72,8 @@ async def register(
         "token_type": "bearer",
         "user": {
             "id": new_user.id,
-            "name": new_user.name,
+            "first_name": new_user.first_name,
+            "last_name": new_user.last_name,
             "email": new_user.email,
             "created_at": new_user.created_at,
         }
@@ -107,15 +109,15 @@ async def login(
             detail="Invalid email or password"
         )
 
-    # Defensive check: Ensure user has hashed_password (fix for orphaned records)
-    if not hasattr(user, 'hashed_password') or not user.hashed_password:
+    # Defensive check: Ensure user has password_hash (fix for orphaned records)
+    if not hasattr(user, 'password_hash') or not user.password_hash:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
         )
 
-    # Verify password
-    if not verify_password(user_data.password, user.hashed_password):
+    # Verify password against password_hash field
+    if not verify_password(user_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password"
@@ -129,7 +131,8 @@ async def login(
         "token_type": "bearer",
         "user": {
             "id": user.id,
-            "name": user.name,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
             "email": user.email,
             "created_at": user.created_at,
         }
@@ -146,12 +149,13 @@ async def get_me(
     Get current authenticated user's profile.
 
     Returns:
-    - User details (id, name, email, created_at)
+    - User details (id, first_name, last_name, email, created_at)
     """
 
     return {
         "id": current_user.id,
-        "name": current_user.name,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
         "email": current_user.email,
         "created_at": current_user.created_at,
     }
