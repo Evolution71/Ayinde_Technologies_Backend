@@ -28,6 +28,7 @@ from routers.courses import router as courses_router
 from routers.payments import router as payments_router
 from routers.captcha import router as captcha_router
 from routers.services import router as services_router
+from routers.team import router as team_router
 
 # Import database
 from database import engine, get_db
@@ -106,12 +107,14 @@ app.include_router(courses_router)
 app.include_router(payments_router)
 app.include_router(captcha_router)
 app.include_router(services_router)
+app.include_router(team_router)
 app.include_router(achievements_router)
 logger.info("[Routers] Auth router loaded")
 logger.info("[Routers] Courses router loaded")
 logger.info("[Routers] Payments router loaded")
 logger.info("[Routers] Captcha router loaded")
 logger.info("[Routers] Services router loaded")
+logger.info("[Routers] Team router loaded")
 logger.info("[Routers] Achievements router loaded")
 # ════════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK ENDPOINTS
@@ -216,4 +219,4 @@ async def startup_event():
 # ════════════════════════════════════════════════════════════════════════════════
 # For local testing with uvicorn:
 # uvicorn main:app --reload --host 0.0.0.0 --port 8000
-# ════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
