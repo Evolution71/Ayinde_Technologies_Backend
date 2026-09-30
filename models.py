@@ -13,6 +13,8 @@ Tables:
 - ServiceTier (pricing tiers for services) - NEW
 - ServiceSubscription (active service subscriptions) - NEW
 - PromoCode (promotional/discount codes) - NEW
+- Achievement (company achievements & milestones) - NEW
+- TeamMember (team members & leadership) - NEW
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON, Text, Numeric
@@ -263,7 +265,6 @@ class Lesson(Base):
     - course_id: Course (FK)
     - title: Lesson title
     - description: Lesson description
-    - content: Lesson content (HTML or Markdown)
     - content_html: HTML version of lesson content
     - video_url: Video URL (optional)
     - duration_minutes: Lesson duration in minutes
@@ -284,7 +285,6 @@ class Lesson(Base):
     course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
     title = Column(String(255), nullable=False)
     description = Column(Text)
-    content = Column(Text)
     content_html = Column(Text)
     video_url = Column(String(512))
     duration_minutes = Column(Integer)
@@ -649,7 +649,6 @@ class ServiceOrder(Base):
 
     # Relationships
     user = relationship("User", back_populates="service_orders")
-
 
 
 class Achievement(Base):
