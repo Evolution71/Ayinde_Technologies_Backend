@@ -649,3 +649,68 @@ class ServiceOrder(Base):
 
     # Relationships
     user = relationship("User", back_populates="service_orders")
+
+
+
+class Achievement(Base):
+    """
+    Company achievements & milestones table.
+
+    Displays company achievements, awards, and key metrics.
+
+    Fields:
+    - id: Primary key
+    - title: Achievement title (e.g., "500+ Successful Projects Delivered")
+    - description: Achievement description
+    - category: Achievement category (general, award, metric, etc)
+    - icon: Emoji or icon for display
+    - order: Display order on page
+    - is_active: Whether achievement is displayed
+    - created_at, updated_at: Timestamps
+    """
+    __tablename__ = "achievements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String(255), nullable=False)
+    description = Column(Text, nullable=False)
+    category = Column(String(50), default="general")  # general, award, metric
+    icon = Column(String(10), default="🎯")  # Emoji
+    order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class TeamMember(Base):
+    """
+    Team member profile table.
+
+    Displays company leadership and team members.
+
+    Fields:
+    - id: Primary key
+    - name: Full name
+    - title: Job title/position
+    - quote: Leadership quote or statement
+    - achievement: Key achievement or accomplishment
+    - image: Emoji or image representation
+    - gender: male | female (for UI grouping)
+    - category: leadership | team | consultant
+    - order: Display order on page
+    - is_active: Whether member is displayed
+    - created_at, updated_at: Timestamps
+    """
+    __tablename__ = "team_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    title = Column(String(255), nullable=False)
+    quote = Column(Text, nullable=False)
+    achievement = Column(Text)
+    image = Column(String(10), default="👤")  # Emoji
+    gender = Column(String(20), default="other")  # male, female, other
+    category = Column(String(50), default="team")  # leadership, team, consultant
+    order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -194,7 +194,26 @@ async def verify_payment(
         logger.info(f"[payments] Verifying payment {payment_id}, nonce={nonce[:20]}...")
         
         # ✅ TODO: In production, call Square API here to verify the nonce and charge
-        # For now, mark as completed (for testing)
+        # Error scenarios to handle:
+        # - INSUFFICIENT_FUNDS: Card doesn't have enough money
+        # - CARD_DECLINED: Card was declined (various reasons)
+        # - INVALID_CARD_DATA: Card details are invalid
+        #
+        # Example integration:
+        # try:
+        #     payment_response = square_client.payments.create_payment({
+        #         source_id: nonce,
+        #         amount_money: { amount: int(payment.amount * 100), currency: payment.currency },
+        #         idempotency_key: str(uuid.uuid4())
+        #     })
+        # except SquareException as e:
+        #     if 'insufficient' in str(e).lower():
+        #         raise HTTPException(status_code=402, detail="Insufficient funds on card")
+        #     if 'declined' in str(e).lower():
+        #         raise HTTPException(status_code=402, detail="Card was declined")
+        #     raise
+
+        # For testing: mark as completed
         payment.status = "completed"
         payment.transaction_id = str(uuid.uuid4())
         payment.paid_at = datetime.now(timezone.utc)

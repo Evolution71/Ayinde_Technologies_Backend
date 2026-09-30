@@ -13,7 +13,7 @@ Routers:
 Database: Supabase PostgreSQL
 Auth: JWT tokens (stored in browser as 'ayinde_token')
 """
-
+from routers.achievements import router as achievements_router
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -106,13 +106,13 @@ app.include_router(courses_router)
 app.include_router(payments_router)
 app.include_router(captcha_router)
 app.include_router(services_router)
-
+app.include_router(achievements_router)
 logger.info("[Routers] Auth router loaded")
 logger.info("[Routers] Courses router loaded")
 logger.info("[Routers] Payments router loaded")
 logger.info("[Routers] Captcha router loaded")
 logger.info("[Routers] Services router loaded")
-
+logger.info("[Routers] Achievements router loaded")
 # ════════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════════
