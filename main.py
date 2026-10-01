@@ -15,6 +15,7 @@ Routers:
 - lessons: Course lesson content and progress
 - projects: Portfolio projects
 - contact: Contact form submissions
+- seed: Database seeding endpoints
 
 Database: Supabase PostgreSQL
 Auth: JWT tokens (stored in browser as 'ayinde_token')
@@ -43,6 +44,7 @@ from routers.team import router as team_router
 from routers.lessons import router as lessons_router
 from routers.projects import router as projects_router
 from routers.contact import router as contact_router
+from routers.seed import router as seed_router
 
 # Import database
 from database import engine, get_db
@@ -139,6 +141,9 @@ app.include_router(team_router)
 # Portfolio
 app.include_router(projects_router)
 
+# Database Seeding
+app.include_router(seed_router)
+
 logger.info("[Routers] ✅ Auth router loaded → /api/auth")
 logger.info("[Routers] ✅ Courses router loaded → /api/courses")
 logger.info("[Routers] ✅ Lessons router loaded → /api/lessons")
@@ -150,6 +155,7 @@ logger.info("[Routers] ✅ Achievements router loaded → /api/achievements")
 logger.info("[Routers] ✅ Quotes router loaded → /api/quotes")
 logger.info("[Routers] ✅ Team router loaded → /api/team")
 logger.info("[Routers] ✅ Projects router loaded → /api/projects")
+logger.info("[Routers] ✅ Seed router loaded → /api/seed")
 
 # ════════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK ENDPOINTS
@@ -252,6 +258,7 @@ async def startup_event():
     logger.info("[Startup] ✅ Quote endpoints: /api/quotes, /api/quotes/{id}")
     logger.info("[Startup] ✅ Team endpoints: /api/team, /api/team/{id}")
     logger.info("[Startup] ✅ Project endpoints: /api/projects, /api/projects/{id}")
+    logger.info("[Startup] ✅ Seed endpoints: /api/seed/team, /api/seed/quotes, /api/seed/all")
     logger.info("")
     logger.info("[Startup] ✅ CORS middleware configured")
     logger.info("[Startup] ✅ OPTIONS handler registered")

@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
 from models import (
-    User, Course, Achievement, TeamMember, Quote,
+    User, Course, Achievement, TeamMember, Quote, ContactMessage,
     CourseEnrollment, Payment, Lesson, LessonProgress, FAQ,
     ServiceTier, ServiceSubscription, PromoCode, ServiceOrder
 )
@@ -69,6 +69,7 @@ def seed_database():
                     duration="4 weeks",
                     level="Beginner",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Python+Fundamentals",
                     currency="USD"
                 ),
@@ -80,6 +81,7 @@ def seed_database():
                     duration="6 weeks",
                     level="Intermediate",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=React",
                     currency="USD"
                 ),
@@ -91,6 +93,7 @@ def seed_database():
                     duration="8 weeks",
                     level="Advanced",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Data+Science",
                     currency="USD"
                 ),
@@ -102,6 +105,7 @@ def seed_database():
                     duration="7 weeks",
                     level="Intermediate",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Mobile+Dev",
                     currency="USD"
                 ),
@@ -113,6 +117,7 @@ def seed_database():
                     duration="5 weeks",
                     level="Advanced",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=JavaScript",
                     currency="USD"
                 ),
@@ -124,6 +129,7 @@ def seed_database():
                     duration="6 weeks",
                     level="Advanced",
                     is_active=True,
+                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=DevOps",
                     currency="USD"
                 ),
