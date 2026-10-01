@@ -18,17 +18,24 @@ router = APIRouter(prefix="/api/quotes", tags=["quotes"])
 
 
 @router.get("/", response_model=dict)
-async def get_quotes(db: Session = Depends(get_db)):
+async def get_quotes(category: str = None, db: Session = Depends(get_db)):
     """
-    Get all active quotes with images.
-    
+    Get all active quotes with images, optionally filtered by category.
+
+    Query Parameters:
+        category: Optional category filter (e.g., 'business', 'technology', 'motivation')
+
     Returns: List of quotes ordered by display order
     """
     try:
-        quotes = db.query(Quote).filter(
-            Quote.is_active == True
-        ).order_by(Quote.order.asc()).all()
-        
+        query = db.query(Quote).filter(Quote.is_active == True)
+
+        # Filter by category if provided
+        if category:
+            query = query.filter(Quote.category == category)
+
+        quotes = query.order_by(Quote.order.asc()).all()
+
         return {
             "success": True,
             "quotes": [

@@ -208,3 +208,22 @@ async def seed_all(db: Session = Depends(get_db)):
         "quotes": quotes_result,
         "message": "All seed data populated"
     }
+
+
+@router.post("/clear-all/")
+async def clear_all(db: Session = Depends(get_db)):
+    """
+    Clear all seed data from database (for testing/reset).
+    WARNING: This deletes all quotes and team members!
+    """
+    try:
+        db.query(Quote).delete()
+        db.query(TeamMember).delete()
+        db.commit()
+        return {
+            "status": "success",
+            "message": "All seed data cleared"
+        }
+    except Exception as e:
+        db.rollback()
+        return {"status": "error", "message": str(e)}
