@@ -264,9 +264,6 @@ class ProjectResponse(ProjectBase):
     class Config:
         from_attributes = True
 
-class ProjectOut(ProjectResponse):
-    pass
-
 
 # ========== CONTACT SCHEMAS ==========
 
@@ -359,5 +356,22 @@ class SavePaymentMethodRequest(BaseModel):
     """Request to save a payment method (Square nonce)"""
     nonce: str
 
+    class Config:
+        from_attributes = True
+
+class ProjectOut(BaseModel):
+    id: int
+    title: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    image_url: Optional[str] = None
+    link: Optional[str] = None
+    github_link: Optional[str] = None
+    technologies: Optional[str] = None
+    order: int = 0
+    is_featured: bool = False
+    created_at: datetime
+    updated_at: datetime
+    
     class Config:
         from_attributes = True
