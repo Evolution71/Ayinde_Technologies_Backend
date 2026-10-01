@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
 from models import (
-    User, Course, Achievement, TeamMember, Quote, ContactMessage,
+    User, Course, Achievement, TeamMember, Quote,
     CourseEnrollment, Payment, Lesson, LessonProgress, FAQ,
     ServiceTier, ServiceSubscription, PromoCode, ServiceOrder
 )
@@ -69,7 +69,6 @@ def seed_database():
                     duration="4 weeks",
                     level="Beginner",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Python+Fundamentals",
                     currency="USD"
                 ),
@@ -81,7 +80,6 @@ def seed_database():
                     duration="6 weeks",
                     level="Intermediate",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=React",
                     currency="USD"
                 ),
@@ -93,7 +91,6 @@ def seed_database():
                     duration="8 weeks",
                     level="Advanced",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Data+Science",
                     currency="USD"
                 ),
@@ -105,7 +102,6 @@ def seed_database():
                     duration="7 weeks",
                     level="Intermediate",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=Mobile+Dev",
                     currency="USD"
                 ),
@@ -117,7 +113,6 @@ def seed_database():
                     duration="5 weeks",
                     level="Advanced",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=JavaScript",
                     currency="USD"
                 ),
@@ -129,7 +124,6 @@ def seed_database():
                     duration="6 weeks",
                     level="Advanced",
                     is_active=True,
-                    is_published=True,
                     icon="https://via.placeholder.com/300x200?text=DevOps",
                     currency="USD"
                 ),
@@ -282,58 +276,58 @@ def seed_database():
         if existing_quotes == 0:
             quotes = [
                 Quote(
-                    text="Success is not final, failure is not fatal: it is the courage to continue that counts.",
-                    author="Winston Churchill",
-                    category="success",
+                    text="If Your Business Is Not On The Internet Then Your Business Will Be Out Of Business",
+                    author="Bill Gates",
+                    category="business",
                     order=1,
                     is_active=True
                 ),
                 Quote(
-                    text="The only way to do great work is to love what you do.",
-                    author="Steve Jobs",
-                    category="business",
+                    text="Artificial intelligence will have a more profound impact on humanity than fire, electricity and the internet.",
+                    author="Sundar Pichai",
+                    category="technology",
                     order=2,
                     is_active=True
                 ),
                 Quote(
-                    text="Innovation distinguishes between a leader and a follower.",
-                    author="Steve Jobs",
-                    category="leadership",
+                    text="If you don't understand the details of your business, you are going to fail.",
+                    author="Jeff Bezos",
+                    category="business",
                     order=3,
                     is_active=True
                 ),
                 Quote(
-                    text="The future belongs to those who believe in the beauty of their dreams.",
-                    author="Eleanor Roosevelt",
-                    category="growth",
+                    text="In a few years, everyone will have their own personal AI — just like we all have smartphones today.",
+                    author="Emad Mostaque",
+                    category="technology",
                     order=4,
                     is_active=True
                 ),
                 Quote(
-                    text="Don't watch the clock; do what it does. Keep going.",
-                    author="Sam Levenson",
+                    text="If it doesn't scare you, you're probably not dreaming big enough.",
+                    author="Tory Burch",
                     category="motivation",
                     order=5,
                     is_active=True
                 ),
                 Quote(
-                    text="Success is not about being the best. It's about being better than you were yesterday.",
-                    author="Unknown",
-                    category="growth",
+                    text="If you don't innovate fast, disrupt your industry, disrupt yourself, you'll be left behind.",
+                    author="John Chambers",
+                    category="business",
                     order=6,
                     is_active=True
                 ),
                 Quote(
-                    text="The best time to plant a tree was 20 years ago. The second best time is now.",
-                    author="Chinese Proverb",
-                    category="business",
+                    text="When something is important enough, you do it even if the odds are not in your favor.",
+                    author="Elon Musk",
+                    category="motivation",
                     order=7,
                     is_active=True
                 ),
                 Quote(
-                    text="Excellence is not a destination; it is a continuous journey that never ends.",
-                    author="Brian Tracy",
-                    category="leadership",
+                    text="You're not going to lose your job to an AI, but you're going to lose your job to someone who uses AI.",
+                    author="Jensen Huang",
+                    category="technology",
                     order=8,
                     is_active=True
                 ),
