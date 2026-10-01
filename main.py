@@ -9,11 +9,17 @@ Routers:
 - payments: Payment processing
 - captcha: Captcha verification
 - services: Service order management
+- achievements: Company achievements and team members
+- quotes: Inspirational quotes with images
+- team: Team member profiles
+- lessons: Course lesson content and progress
+- projects: Portfolio projects
+- contact: Contact form submissions
 
 Database: Supabase PostgreSQL
 Auth: JWT tokens (stored in browser as 'ayinde_token')
 """
-from routers.achievements import router as achievements_router
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,13 +28,21 @@ import logging
 import os
 from datetime import datetime, timezone
 
-# Import routers
+# ════════════════════════════════════════════════════════════════════════════════
+# IMPORT ALL ROUTERS
+# ════════════════════════════════════════════════════════════════════════════════
+
 from routers.auth import router as auth_router
 from routers.courses import router as courses_router
 from routers.payments import router as payments_router
 from routers.captcha import router as captcha_router
 from routers.services import router as services_router
+from routers.achievements import router as achievements_router
+from routers.quotes import router as quotes_router
 from routers.team import router as team_router
+from routers.lessons import router as lessons_router
+from routers.projects import router as projects_router
+from routers.contact import router as contact_router
 
 # Import database
 from database import engine, get_db
@@ -99,23 +113,44 @@ async def options_handler(full_path: str):
 logger.info("[OPTIONS] Preflight handler registered for all routes")
 
 # ════════════════════════════════════════════════════════════════════════════════
-# ROUTERS
+# ROUTERS - ALL ENDPOINTS REGISTERED HERE
 # ════════════════════════════════════════════════════════════════════════════════
 
+# Authentication
 app.include_router(auth_router)
+
+# Course Management
 app.include_router(courses_router)
+app.include_router(lessons_router)
+
+# Payments & Services
 app.include_router(payments_router)
-app.include_router(captcha_router)
 app.include_router(services_router)
-app.include_router(team_router)
+
+# Security & Forms
+app.include_router(captcha_router)
+app.include_router(contact_router)
+
+# Public Content
 app.include_router(achievements_router)
-logger.info("[Routers] Auth router loaded")
-logger.info("[Routers] Courses router loaded")
-logger.info("[Routers] Payments router loaded")
-logger.info("[Routers] Captcha router loaded")
-logger.info("[Routers] Services router loaded")
-logger.info("[Routers] Team router loaded")
-logger.info("[Routers] Achievements router loaded")
+app.include_router(quotes_router)
+app.include_router(team_router)
+
+# Portfolio
+app.include_router(projects_router)
+
+logger.info("[Routers] ✅ Auth router loaded → /api/auth")
+logger.info("[Routers] ✅ Courses router loaded → /api/courses")
+logger.info("[Routers] ✅ Lessons router loaded → /api/lessons")
+logger.info("[Routers] ✅ Payments router loaded → /api/payments")
+logger.info("[Routers] ✅ Services router loaded → /api/services")
+logger.info("[Routers] ✅ Captcha router loaded → /api/captcha")
+logger.info("[Routers] ✅ Contact router loaded → /api/contact")
+logger.info("[Routers] ✅ Achievements router loaded → /api/achievements")
+logger.info("[Routers] ✅ Quotes router loaded → /api/quotes")
+logger.info("[Routers] ✅ Team router loaded → /api/team")
+logger.info("[Routers] ✅ Projects router loaded → /api/projects")
+
 # ════════════════════════════════════════════════════════════════════════════════
 # HEALTH CHECK ENDPOINTS
 # ════════════════════════════════════════════════════════════════════════════════
@@ -202,16 +237,25 @@ async def startup_event():
     logger.info("════════════════════════════════════════════════════════════════════════════════")
     logger.info("🚀 Ayinde Technologies API Starting")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
-    logger.info(f"[Startup] Database URL: {os.getenv('DATABASE_URL', 'NOT SET')[:50]}...")
+    logger.info(f"[Startup] Database: {os.getenv('DATABASE_URL', 'NOT SET')[:50]}...")
     logger.info(f"[Startup] Environment: {os.getenv('ENVIRONMENT', 'production')}")
     logger.info(f"[Startup] Allowed Origins: {', '.join(allow_origins)}")
-    logger.info("[Startup] ✅ Auth router loaded")
-    logger.info("[Startup] ✅ Courses router loaded")
-    logger.info("[Startup] ✅ Payments router loaded")
-    logger.info("[Startup] ✅ Captcha router loaded")
-    logger.info("[Startup] ✅ Services router loaded")
+    logger.info("")
+    logger.info("[Startup] ✅ Auth endpoints: /api/auth/register, /api/auth/login, /api/auth/me")
+    logger.info("[Startup] ✅ Course endpoints: /api/courses, /api/courses/{id}, /api/courses/{id}/enroll")
+    logger.info("[Startup] ✅ Lesson endpoints: /api/lessons/{id}, /api/lessons/{id}/progress")
+    logger.info("[Startup] ✅ Payment endpoints: /api/payments/create-intent, /api/payments/verify")
+    logger.info("[Startup] ✅ Service endpoints: /api/services/tiers/{type}, /api/services/checkout")
+    logger.info("[Startup] ✅ Captcha endpoints: /api/captcha, /api/captcha/verify")
+    logger.info("[Startup] ✅ Contact endpoint: /api/contact")
+    logger.info("[Startup] ✅ Achievement endpoints: /api/achievements, /api/team-members")
+    logger.info("[Startup] ✅ Quote endpoints: /api/quotes, /api/quotes/{id}")
+    logger.info("[Startup] ✅ Team endpoints: /api/team, /api/team/{id}")
+    logger.info("[Startup] ✅ Project endpoints: /api/projects, /api/projects/{id}")
+    logger.info("")
     logger.info("[Startup] ✅ CORS middleware configured")
     logger.info("[Startup] ✅ OPTIONS handler registered")
+    logger.info("[Startup] ✅ Error handlers registered")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
     logger.info("🟢 Ayinde Technologies API is ONLINE")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
@@ -219,4 +263,4 @@ async def startup_event():
 # ════════════════════════════════════════════════════════════════════════════════
 # For local testing with uvicorn:
 # uvicorn main:app --reload --host 0.0.0.0 --port 8000
-# ══════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════════
+# ════════════════════════════════════════════════════════════════════════════════

@@ -15,6 +15,7 @@ Tables:
 - PromoCode (promotional/discount codes) - NEW
 - Achievement (company achievements & milestones) - NEW
 - TeamMember (team members & leadership) - NEW
+- Quote (inspirational business quotes) - NEW
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON, Text, Numeric
@@ -707,6 +708,35 @@ class TeamMember(Base):
     image = Column(String(10), default="👤")  # Emoji
     gender = Column(String(20), default="other")  # male, female, other
     category = Column(String(50), default="team")  # leadership, team, consultant
+    order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Quote(Base):
+    """
+    Inspirational business quotes table.
+
+    Displays motivational and inspirational business quotes.
+
+    Fields:
+    - id: Primary key
+    - text: Quote text
+    - author: Quote author name
+    - image_url: URL to author image
+    - category: Quote category (business, leadership, growth, success, etc)
+    - order: Display order on page
+    - is_active: Whether quote is displayed
+    - created_at, updated_at: Timestamps
+    """
+    __tablename__ = "quotes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    text = Column(Text, nullable=False)
+    author = Column(String(255), nullable=False)
+    image_url = Column(String(512))  # URL to author image
+    category = Column(String(50), default="business")  # business, leadership, growth, success, motivation
     order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

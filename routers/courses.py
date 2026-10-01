@@ -345,6 +345,10 @@ async def get_course_progress(
 
 # ========== LIST ALL COURSES ==========
 
+# ========== LIST ALL COURSES ==========
+# ⚠️ IMPORTANT: This route MUST come LAST because it matches any path
+# If placed before specific routes like /{course_id}/, it will intercept them
+
 @router.get("/")
 async def get_courses(db: Session = Depends(get_db)):
     """
@@ -369,7 +373,6 @@ async def get_courses(db: Session = Depends(get_db)):
             for c in courses
         ]
     }
-
 
 # ========== GET COURSE DETAILS ==========
 

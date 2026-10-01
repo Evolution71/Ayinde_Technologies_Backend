@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
 from models import (
-    User, Course, Achievement, TeamMember,
+    User, Course, Achievement, TeamMember, Quote,
     CourseEnrollment, Payment, Lesson, LessonProgress, FAQ,
     ServiceTier, ServiceSubscription, PromoCode, ServiceOrder
 )
@@ -269,6 +269,76 @@ def seed_database():
             print(f"\n✅ Successfully added {len(team_members)} team members!")
         else:
             print(f"✅ Database already has {existing_team} team members. Skipping team members.")
+
+        # ========== SEED QUOTES ==========
+        print("\n💬 Seeding quotes...")
+        existing_quotes = db.query(Quote).count()
+        if existing_quotes == 0:
+            quotes = [
+                Quote(
+                    text="Success is not final, failure is not fatal: it is the courage to continue that counts.",
+                    author="Winston Churchill",
+                    category="success",
+                    order=1,
+                    is_active=True
+                ),
+                Quote(
+                    text="The only way to do great work is to love what you do.",
+                    author="Steve Jobs",
+                    category="business",
+                    order=2,
+                    is_active=True
+                ),
+                Quote(
+                    text="Innovation distinguishes between a leader and a follower.",
+                    author="Steve Jobs",
+                    category="leadership",
+                    order=3,
+                    is_active=True
+                ),
+                Quote(
+                    text="The future belongs to those who believe in the beauty of their dreams.",
+                    author="Eleanor Roosevelt",
+                    category="growth",
+                    order=4,
+                    is_active=True
+                ),
+                Quote(
+                    text="Don't watch the clock; do what it does. Keep going.",
+                    author="Sam Levenson",
+                    category="motivation",
+                    order=5,
+                    is_active=True
+                ),
+                Quote(
+                    text="Success is not about being the best. It's about being better than you were yesterday.",
+                    author="Unknown",
+                    category="growth",
+                    order=6,
+                    is_active=True
+                ),
+                Quote(
+                    text="The best time to plant a tree was 20 years ago. The second best time is now.",
+                    author="Chinese Proverb",
+                    category="business",
+                    order=7,
+                    is_active=True
+                ),
+                Quote(
+                    text="Excellence is not a destination; it is a continuous journey that never ends.",
+                    author="Brian Tracy",
+                    category="leadership",
+                    order=8,
+                    is_active=True
+                ),
+            ]
+            for quote in quotes:
+                db.add(quote)
+                print(f"✅ Added quote: {quote.author}")
+            db.commit()
+            print(f"\n✅ Successfully added {len(quotes)} quotes!")
+        else:
+            print(f"✅ Database already has {existing_quotes} quotes. Skipping quotes.")
 
         print("\n✅ Database seeding complete!")
 
