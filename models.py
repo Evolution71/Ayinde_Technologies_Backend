@@ -758,4 +758,26 @@ class Project(Base):
     is_featured = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
-   
+
+class ContactMessage(Base):
+    """
+    Contact form submissions table.
+    
+    Stores messages from the contact form on the website.
+    
+    Fields:
+    - id: Primary key
+    - name: Sender's name
+    - email: Sender's email
+    - subject: Message subject
+    - message: Message content
+    - created_at: When message was submitted
+    """
+    __tablename__ = "contact_messages"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    subject = Column(String(255), nullable=False)
+    message = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
