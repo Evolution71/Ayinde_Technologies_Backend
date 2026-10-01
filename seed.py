@@ -8,7 +8,11 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy.orm import Session
 from database import engine, SessionLocal, Base
-from models import User, Course, Achievement, TeamMember  # ✓ FIXED: Added Achievement and TeamMember
+from models import (
+    User, Course, Achievement, TeamMember,
+    CourseEnrollment, Payment, Lesson, LessonProgress, FAQ,
+    ServiceTier, ServiceSubscription, PromoCode, ServiceOrder
+)
 from auth import hash_password
 
 # Load environment variables
@@ -30,20 +34,25 @@ def seed_database():
         if existing_users == 0:
             users = [
                 User(
-                    name="Demo User",
+                    first_name="Demo",
+                    last_name="User",
                     email="demo@ayindetechnologies.com",
-                    hashed_password=hash_password("password123"),
+                    password_hash=hash_password("password123"),
+                    is_active=True
                 ),
                 User(
-                    name="Test Admin",
+                    first_name="Test",
+                    last_name="Admin",
                     email="admin@ayindetechnologies.com",
-                    hashed_password=hash_password("admin123"),
+                    password_hash=hash_password("admin123"),
+                    is_active=True
                 ),
             ]
             for user in users:
                 db.add(user)
                 print(f"✅ Added user: {user.email}")
             db.commit()
+            print(f"\n✅ Successfully added {len(users)} users!")
         else:
             print(f"✅ Database already has {existing_users} users. Skipping users.")
 
@@ -127,7 +136,7 @@ def seed_database():
         else:
             print(f"✅ Database already has {existing_courses} courses. Skipping courses.")
 
-        # ========== SEED ACHIEVEMENTS ========== (✓ NEW)
+        # ========== SEED ACHIEVEMENTS ==========
         print("\n🏆 Seeding achievements...")
         existing_achievements = db.query(Achievement).count()
         if existing_achievements == 0:
@@ -181,7 +190,7 @@ def seed_database():
         else:
             print(f"✅ Database already has {existing_achievements} achievements. Skipping achievements.")
 
-        # ========== SEED TEAM MEMBERS ========== (✓ NEW)
+        # ========== SEED TEAM MEMBERS ==========
         print("\n👥 Seeding team members...")
         existing_team = db.query(TeamMember).count()
         if existing_team == 0:

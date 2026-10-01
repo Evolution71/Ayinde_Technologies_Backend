@@ -2,13 +2,13 @@
 Achievements and Team Members Router - Manage company achievements and team profiles
 
 Endpoints:
-- GET /api/achievements/ - Get all active achievements
+- GET /api/achievements - Get all active achievements
 - POST /api/achievements - Create achievement (admin only)
 - PUT /api/achievements/{achievement_id} - Update achievement (admin only)
 - DELETE /api/achievements/{achievement_id} - Delete achievement (admin only)
 
-- GET /api/team-members/ - Get all active team members
-- GET /api/team-members/by-gender/{gender}/ - Get team members filtered by gender
+- GET /api/team-members - Get all active team members
+- GET /api/team-members/by-gender/{gender} - Get team members filtered by gender
 - POST /api/team-members - Create team member (admin only)
 - PUT /api/team-members/{member_id} - Update team member (admin only)
 - DELETE /api/team-members/{member_id} - Delete team member (admin only)
@@ -32,7 +32,7 @@ router = APIRouter(prefix="/api", tags=["achievements"])
 # ACHIEVEMENTS - Company achievements and milestones
 # ════════════════════════════════════════════════════════════════════════════════
 
-@router.get("/achievements/")  # ✓ FIXED: Added trailing slash
+@router.get("/achievements/")
 async def get_achievements(db: Session = Depends(get_db)):
     """
     Get all active achievements.
@@ -214,7 +214,7 @@ async def delete_achievement(
 # TEAM MEMBERS - Leadership and team profiles
 # ════════════════════════════════════════════════════════════════════════════════
 
-@router.get("/team-members/")  # ✓ FIXED: Added trailing slash
+@router.get("/team-members/")
 async def get_team_members(db: Session = Depends(get_db)):
     """
     Get all active team members.
@@ -263,7 +263,7 @@ async def get_team_members(db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/team-members/by-gender/{gender}/")  # ✓ FIXED: Added trailing slash
+@router.get("/team-members/by-gender/{gender}/")
 async def get_team_members_by_gender(
     gender: str,
     db: Session = Depends(get_db)

@@ -18,11 +18,9 @@ Tables:
 """
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, JSON, Text, Numeric
-from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
-
-Base = declarative_base()
+from database import Base
 
 
 class User(Base):
