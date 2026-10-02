@@ -1,7 +1,5 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-pydantic==2.5.0
-pydantic[email]==2.5.0
 python-dotenv==1.0.0
 python-multipart==0.0.6
 sqlalchemy==2.0.23
@@ -12,3 +10,6 @@ pillow==10.4.0
 slowapi==0.1.9
 requests==2.32.3
 squareup==43.2.0.20251016
+
+pydantic==2.9.2 (from 2.5.0)
+pydantic[email]==2.9.2
