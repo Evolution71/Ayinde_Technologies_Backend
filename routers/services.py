@@ -30,6 +30,8 @@ import logging
 from database import get_db
 from auth import get_current_user
 from models import User, ServiceOrder, ServiceTier, ServiceSubscription, PromoCode
+from square_payment import payment_processor
+from email_utils import email_sender
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/services", tags=["services"])
@@ -689,23 +691,39 @@ async def create_service_order(
 
         logger.info(f"[services] Processing purchase for user {current_user.id}: tier={tier}, amount={amount}")
 
-        # ✅ TODO: Call Square API here to charge the card
-        # Example error handling structure:
-        # try:
-        #     payment = square_client.payments.create_payment({
-        #         source_id: source_id,
-        #         amount_money: {
-        #             amount: int(amount * 100),  # Convert to cents
-        #             currency: currency
-        #         },
-        #         idempotency_key: str(uuid.uuid4())
-        #     })
-        # except SquareException as e:
-        #     if 'insufficient' in str(e):
-        #         return { success: False, error_code: INSUFFICIENT_FUNDS, message: "Your card has insufficient funds" }
-        #     if 'declined' in str(e) or 'invalid' in str(e):
-        #         return { success: False, error_code: CARD_DECLINED, message: "Your card was declined" }
-        #     raise
+        # ✅ CALL SQUARE API TO CHARGE THE CARD
+        amount_cents = int(amount * 100)  # Convert to cents
+        idempotency_key = f"SVC-{current_user.id}-{uuid.uuid4().hex[:12]}"
+
+        success, payment_result = payment_processor.charge_card(
+            source_id=source_id,
+            amount_cents=amount_cents,
+            currency=currency,
+            description=f"{tier_name} - {service_type}",
+            idempotency_key=idempotency_key
+        )
+
+        # If payment failed, return error immediately
+        if not success:
+            error_message = payment_result.get("message", "Payment failed")
+            logger.warning(f"[services] Payment failed for user {current_user.id}: {error_message}")
+
+            # Send failure notification email
+            email_sender.send_payment_failed_notification(
+                to_email=email,
+                full_name=full_name,
+                tier_name=tier_name,
+                reason=error_message
+            )
+
+            raise HTTPException(
+                status_code=402,  # 402 Payment Required
+                detail=error_message
+            )
+
+        # Payment was successful
+        payment_id = payment_result.get("payment_id", "")
+        logger.info(f"[services] Payment successful: {payment_id}")
 
         service_starts_at = datetime.now(timezone.utc)
 
@@ -755,14 +773,28 @@ async def create_service_order(
         db.commit()
         db.refresh(order)
 
-        logger.info(f"[services] Order created: {order.id}, now processing payment")
+        logger.info(f"[services] Order created: {order.id}")
 
-        # ✅ Mark payment as completed (in production, verify with Square API response)
+        # ✅ Mark payment as completed (already verified via Square API above)
         order.payment_status = "completed"
         order.payment_completed_at = datetime.now(timezone.utc)
+        order.transaction_id = payment_id  # Store the Square payment ID
         db.commit()
 
         logger.info(f"[services] Payment completed for order {order.id}")
+
+        # Send confirmation email to customer
+        email_sender.send_order_confirmation(
+            to_email=email,
+            full_name=full_name,
+            tier_name=tier_name,
+            amount=amount,
+            order_id=order.id,
+            service_type=service_type,
+            transaction_id=payment_id,
+            service_starts_at=service_starts_at.isoformat(),
+            service_ends_at=service_ends_at.isoformat()
+        )
 
         return {
             "success": True,
