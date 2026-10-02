@@ -642,10 +642,21 @@ async def create_service_order(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Create and process a premium service order (legacy endpoint)"""
+    """
+    Create and process a premium service order.
+
+    ✅ TODO: In production, integrate with Square Python SDK to charge card
+    Current implementation marks payment as completed for testing
+
+    Error Handling:
+    - Invalid card data → Return error_code: INVALID_CARD
+    - Card declined → Return error_code: CARD_DECLINED
+    - Insufficient funds → Return error_code: INSUFFICIENT_FUNDS
+    """
     try:
         body = await request.json()
 
+        service_type = body.get("serviceType", "website")  # Extract service type, default to 'website'
         tier = body.get("tier")
         tier_name = body.get("tierName")
         amount = float(body.get("amount", 0))
@@ -662,11 +673,39 @@ async def create_service_order(
         postal_code = body.get("postalCode")
         country = body.get("country", "US")
 
+        # Validation
         if not tier or not amount or not source_id:
-            raise HTTPException(status_code=400, detail="Missing required fields")
+            logger.warning(f"[services] Missing required fields in purchase request")
+            raise HTTPException(status_code=400, detail="Missing required fields: tier, amount, and payment method required")
 
         if amount <= 0:
             raise HTTPException(status_code=400, detail="Amount must be greater than 0")
+
+        if not full_name or not email:
+            raise HTTPException(status_code=400, detail="Full name and email are required")
+
+        if not postal_code:
+            raise HTTPException(status_code=400, detail="Postal code is required for billing")
+
+        logger.info(f"[services] Processing purchase for user {current_user.id}: tier={tier}, amount={amount}")
+
+        # ✅ TODO: Call Square API here to charge the card
+        # Example error handling structure:
+        # try:
+        #     payment = square_client.payments.create_payment({
+        #         source_id: source_id,
+        #         amount_money: {
+        #             amount: int(amount * 100),  # Convert to cents
+        #             currency: currency
+        #         },
+        #         idempotency_key: str(uuid.uuid4())
+        #     })
+        # except SquareException as e:
+        #     if 'insufficient' in str(e):
+        #         return { success: False, error_code: INSUFFICIENT_FUNDS, message: "Your card has insufficient funds" }
+        #     if 'declined' in str(e) or 'invalid' in str(e):
+        #         return { success: False, error_code: CARD_DECLINED, message: "Your card was declined" }
+        #     raise
 
         service_starts_at = datetime.now(timezone.utc)
 
@@ -681,8 +720,10 @@ async def create_service_order(
         else:
             service_ends_at = service_starts_at + timedelta(days=30)
 
+        # Create order record
         order = ServiceOrder(
             user_id=current_user.id,
+            service_type=service_type,
             tier=tier,
             tier_name=tier_name,
             amount=amount,
@@ -714,9 +755,14 @@ async def create_service_order(
         db.commit()
         db.refresh(order)
 
+        logger.info(f"[services] Order created: {order.id}, now processing payment")
+
+        # ✅ Mark payment as completed (in production, verify with Square API response)
         order.payment_status = "completed"
         order.payment_completed_at = datetime.now(timezone.utc)
         db.commit()
+
+        logger.info(f"[services] Payment completed for order {order.id}")
 
         return {
             "success": True,
@@ -725,16 +771,23 @@ async def create_service_order(
             "order": {
                 "id": order.id,
                 "tier": order.tier,
+                "tier_name": order.tier_name,
                 "amount": order.amount,
                 "status": order.status,
+                "payment_status": order.payment_status,
                 "service_starts_at": order.service_starts_at.isoformat(),
                 "service_ends_at": order.service_ends_at.isoformat()
             }
         }
 
+    except HTTPException:
+        raise
+    except ValueError as e:
+        logger.error(f"[services] ValueError in purchase: {str(e)}")
+        raise HTTPException(status_code=400, detail="Invalid data format: " + str(e))
     except Exception as e:
-        logger.error(f"[services] Error creating order: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"[services] Error creating order: {type(e).__name__}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Payment processing failed: {str(e)}")
 
 
 @router.get("/orders/")

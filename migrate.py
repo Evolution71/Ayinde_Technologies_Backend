@@ -1,43 +1,28 @@
 """
-Migration: Add missing columns to users table
-Run this after deploying to add password and other missing columns
+Migration: Add service_type column to service_orders table
+Run this to add the missing service_type column that the ServiceOrder model expects
 """
 
 from sqlalchemy import text
 from database import engine
 
 def migrate():
-    """Add missing columns to users table"""
-    
+    """Add missing service_type column to service_orders table"""
+
     with engine.connect() as connection:
         try:
-            # Add password column if missing
-            print("Adding 'password' column to users table...")
+            # Add service_type column if missing
+            print("Adding 'service_type' column to service_orders table...")
             connection.execute(text("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS password VARCHAR(255) NOT NULL DEFAULT '';
+                ALTER TABLE service_orders
+                ADD COLUMN IF NOT EXISTS service_type VARCHAR(255) DEFAULT 'website';
             """))
-            print("✅ Added 'password' column")
-            
-            # Add name column if missing
-            print("Adding 'name' column to users table...")
-            connection.execute(text("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS name VARCHAR(255) NOT NULL DEFAULT '';
-            """))
-            print("✅ Added 'name' column")
-            
-            # Add created_at column if missing
-            print("Adding 'created_at' column to users table...")
-            connection.execute(text("""
-                ALTER TABLE users
-                ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
-            """))
-            print("✅ Added 'created_at' column")
-            
+            print("✅ Added 'service_type' column")
+
             connection.commit()
-            print("\n✅ All migrations completed successfully!")
-            
+            print("\n✅ Migration completed successfully!")
+            print("Note: All existing orders now have service_type='website' as default")
+
         except Exception as e:
             connection.rollback()
             print(f"❌ Migration error: {e}")
