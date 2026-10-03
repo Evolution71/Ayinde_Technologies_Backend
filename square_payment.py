@@ -17,7 +17,7 @@ try:
     SQUARE_SDK_AVAILABLE = True
 except ImportError:
     SQUARE_SDK_AVAILABLE = False
-    logger.warning("⚠️ squareup SDK not installed. Install with: pip install squareup")
+    logger.warning("⚠️ squareup SDK not installed. Install withs: pip install squareup")
 
 
 class SquarePaymentProcessor:
