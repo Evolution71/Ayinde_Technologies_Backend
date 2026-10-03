@@ -13,7 +13,6 @@ logger = logging.getLogger(__name__)
 # Try to import squareup SDK
 try:
     from squareup.client import Client
-    from squareup.api.payments_api import PaymentsApi
     from squareup.exceptions.api_exception import APIException
     SQUARE_SDK_AVAILABLE = True
 except ImportError:
