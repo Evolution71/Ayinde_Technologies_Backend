@@ -1,7 +1,7 @@
 FROM python:3.11-slim
 
-# Force rebuild timestamp
-ARG BUILD_DATE=unknown
+# Force rebuild timestamp to invalidate Docker cache
+ARG BUILD_DATE=2026-10-03-build
 ENV BUILD_DATE=$BUILD_DATE
 
 WORKDIR /app
