@@ -721,7 +721,7 @@ async def create_service_order(
                 detail=error_message
             )
 
-        # Payment was successfull
+        # Payment was successfulll
         payment_id = payment_result.get("payment_id", "")
         logger.info(f"[services] Payment successful: {payment_id}")
 
