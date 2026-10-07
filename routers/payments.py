@@ -17,6 +17,7 @@ import uuid
 from database import get_db
 from auth import get_current_user
 from models import User, Course, CourseEnrollment, Payment
+from square_payment import payment_processor
 import schemas
 
 logger = logging.getLogger(__name__)
@@ -192,30 +193,42 @@ async def verify_payment(
             )
         
         logger.info(f"[payments] Verifying payment {payment_id}, nonce={nonce[:20]}...")
-        
-        # ✅ TODO: In production, call Square API here to verify the nonce and charge
-        # Error scenarios to handle:
-        # - INSUFFICIENT_FUNDS: Card doesn't have enough money
-        # - CARD_DECLINED: Card was declined (various reasons)
-        # - INVALID_CARD_DATA: Card details are invalid
-        #
-        # Example integration:
-        # try:
-        #     payment_response = square_client.payments.create_payment({
-        #         source_id: nonce,
-        #         amount_money: { amount: int(payment.amount * 100), currency: payment.currency },
-        #         idempotency_key: str(uuid.uuid4())
-        #     })
-        # except SquareException as e:
-        #     if 'insufficient' in str(e).lower():
-        #         raise HTTPException(status_code=402, detail="Insufficient funds on card")
-        #     if 'declined' in str(e).lower():
-        #         raise HTTPException(status_code=402, detail="Card was declined")
-        #     raise
 
-        # For testing: mark as completed
+        # ✅ Call Square API to process the payment
+        amount_cents = int(payment.amount * 100)
+        idempotency_key = f"PAY-{payment.id}-{uuid.uuid4().hex[:12]}"
+
+        success, payment_result = payment_processor.charge_card(
+            source_id=nonce,
+            amount_cents=amount_cents,
+            currency=payment.currency,
+            description=f"Course: {request_data.get('course_title', payment.course_id)}",
+            idempotency_key=idempotency_key
+        )
+
+        if not success:
+            # Payment failed via Square API
+            error_message = payment_result.get("message", "Payment processing failed")
+            error_code = payment_result.get("error_code", "UNKNOWN_ERROR")
+            logger.warning(f"[payments] Payment failed: {error_code} - {error_message}")
+
+            # Mark payment as failed and store error details in payment_data
+            payment.status = "failed"
+            payment.payment_data = {
+                "error_code": error_code,
+                "error_message": error_message,
+                "error_type": payment_result.get("error_type", "UNKNOWN")
+            }
+            db.commit()
+
+            raise HTTPException(
+                status_code=402,  # 402 Payment Required
+                detail=error_message
+            )
+
+        # Payment was successful via Square API
         payment.status = "completed"
-        payment.transaction_id = str(uuid.uuid4())
+        payment.transaction_id = payment_result.get("payment_id", "")
         payment.paid_at = datetime.now(timezone.utc)
         
         # Update enrollment status to 'active'
