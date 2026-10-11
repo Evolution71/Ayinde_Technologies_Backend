@@ -12,12 +12,22 @@ logger = logging.getLogger(__name__)
 
 # Try to import squareup SDK
 try:
-    from squareup.client import Client
-    from squareup.exceptions.api_exception import APIException
-    SQUARE_SDK_AVAILABLE = True
+    # Try newer SDK version first (43.x.x)
+    try:
+        from squareup.square_client import SquareClient
+        from squareup.exceptions import ApiException as APIException
+        SQUARE_SDK_AVAILABLE = True
+        SQUARE_SDK_VERSION = "new"
+    except (ImportError, ModuleNotFoundError):
+        # Fall back to older SDK version
+        from squareup.client import Client as SquareClient
+        from squareup.exceptions.api_exception import APIException
+        SQUARE_SDK_AVAILABLE = True
+        SQUARE_SDK_VERSION = "old"
 except ImportError:
     SQUARE_SDK_AVAILABLE = False
-    logger.warning("⚠️ squareup SDK not installed. Install withs: pip install squareup")
+    SQUARE_SDK_VERSION = None
+    logger.error("❌ squareup SDK not installed. Install with: pip install squareup")
 
 
 class SquarePaymentProcessor:
@@ -29,16 +39,30 @@ class SquarePaymentProcessor:
         self.enabled = bool(self.square_api_key and SQUARE_SDK_AVAILABLE)
 
         if self.enabled:
-            self.client = Client(
-                access_token=self.square_api_key,
-                environment=self.square_environment
-            )
-            self.payments_api = self.client.payments
-            logger.info(f"✅ Square payment processor initialized ({self.square_environment} mode)")
+            try:
+                if SQUARE_SDK_VERSION == "new":
+                    # Newer SDK version (43.x.x)
+                    self.client = SquareClient(
+                        access_token=self.square_api_key,
+                        environment=self.square_environment
+                    )
+                    self.payments_api = self.client.payments_api
+                else:
+                    # Older SDK version
+                    self.client = SquareClient(
+                        access_token=self.square_api_key,
+                        environment=self.square_environment
+                    )
+                    self.payments_api = self.client.payments
+
+                logger.info(f"✅ Square payment processor initialized ({self.square_environment} mode, SDK version: {SQUARE_SDK_VERSION})")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize Square client: {str(e)}")
+                self.enabled = False
         elif SQUARE_SDK_AVAILABLE:
-            logger.warning("⚠️ Square API key not configured. Set SQUARE_ACCESS_TOKEN environment variable.")
+            logger.error("❌ Square API key not configured. Set SQUARE_ACCESS_TOKEN environment variable.")
         else:
-            logger.warning("⚠️ Square SDK not installed. Payment processing disabled.")
+            logger.error("❌ Square SDK not installed. Payment processing disabled. Install with: pip install squareup")
 
     def charge_card(
         self,

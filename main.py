@@ -50,8 +50,12 @@ from routers.seed import router as seed_router
 from database import engine, get_db
 from models import Base
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with proper formatting
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(levelname)s:%(name)s:%(message)s',
+    handlers=[logging.StreamHandler()]
+)
 logger = logging.getLogger(__name__)
 
 # Create tables
@@ -239,14 +243,50 @@ async def general_exception_handler(request, exc):
 
 @app.on_event("startup")
 async def startup_event():
-    """Log startup information."""
+    """Log startup information and validate environment configuration."""
     logger.info("════════════════════════════════════════════════════════════════════════════════")
     logger.info("🚀 Ayinde Technologies API Starting")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
-    logger.info(f"[Startup] Database: {os.getenv('DATABASE_URL', 'NOT SET')[:50]}...")
-    logger.info(f"[Startup] Environment: {os.getenv('ENVIRONMENT', 'production')}")
+
+    # Database configuration
+    db_url = os.getenv('DATABASE_URL', 'NOT SET')
+    logger.info(f"[Startup] Database: {db_url[:50] if db_url != 'NOT SET' else 'NOT SET'}...")
+
+    # Environment
+    environment = os.getenv('ENVIRONMENT', 'production')
+    logger.info(f"[Startup] Environment: {environment}")
+
+    # CORS
     logger.info(f"[Startup] Allowed Origins: {', '.join(allow_origins)}")
+
+    # Validate critical configurations
     logger.info("")
+    logger.info("[Startup] 🔍 Configuration Status:")
+
+    # Square Payment Configuration
+    square_token = os.getenv('SQUARE_ACCESS_TOKEN', '')
+    if square_token:
+        logger.info("[Startup] ✅ Square Payment: Configured")
+    else:
+        logger.error("[Startup] ❌ Square Payment: NOT configured - Set SQUARE_ACCESS_TOKEN environment variable")
+
+    # Email Configuration
+    gmail_email = os.getenv('GMAIL_EMAIL', '')
+    gmail_password = os.getenv('GMAIL_APP_PASSWORD', '')
+    if gmail_email and gmail_password:
+        logger.info("[Startup] ✅ Email System: Configured")
+    else:
+        logger.warning("[Startup] ⚠️ Email System: NOT configured - Set GMAIL_EMAIL and GMAIL_APP_PASSWORD environment variables")
+
+    # JWT Secret
+    jwt_secret = os.getenv('JWT_SECRET_KEY', '')
+    if jwt_secret:
+        logger.info("[Startup] ✅ JWT Authentication: Configured")
+    else:
+        logger.error("[Startup] ❌ JWT Authentication: NOT configured - Set JWT_SECRET_KEY environment variable")
+
+    logger.info("")
+    logger.info("[Startup] 📋 Available Endpoints:")
     logger.info("[Startup] ✅ Auth endpoints: /api/auth/register, /api/auth/login, /api/auth/me")
     logger.info("[Startup] ✅ Course endpoints: /api/courses, /api/courses/{id}, /api/courses/{id}/enroll")
     logger.info("[Startup] ✅ Lesson endpoints: /api/lessons/{id}, /api/lessons/{id}/progress")
@@ -268,6 +308,6 @@ async def startup_event():
     logger.info("════════════════════════════════════════════════════════════════════════════════")
 
 # ════════════════════════════════════════════════════════════════════════════════
-# For local testing with uvicorns:
+# For local testing with uvicorn:
 # uvicorn main:app --reload --host 0.0.0.0 --port 8000
 # ════════════════════════════════════════════════════════════════════════════════
