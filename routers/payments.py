@@ -17,7 +17,7 @@ import uuid
 from database import get_db
 from auth import get_current_user
 from models import User, Course, CourseEnrollment, Payment
-from square_payment import payment_processor
+from stripe_payment import payment_processor
 import schemas
 
 logger = logging.getLogger(__name__)

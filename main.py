@@ -264,12 +264,12 @@ async def startup_event():
     logger.info("[Startup] 🔍 Configuration Status:")
 
     # Square Payment Configuration
-    square_token = os.getenv('SQUARE_ACCESS_TOKEN', '')
-    if square_token:
-        logger.info("[Startup] ✅ Square Payment: Configured")
+        # Stripe Payment Configuration
+    stripe_key = os.getenv('STRIPE_SECRET_KEY', '')
+    if stripe_key:
+        logger.info("[Startup] ✅ Stripe Payment: Configured")
     else:
-        logger.error("[Startup] ❌ Square Payment: NOT configured - Set SQUARE_ACCESS_TOKEN environment variable")
-
+        logger.error("[Startup] ❌ Stripe Payment: NOT configured - Set STRIPE_SECRET_KEY environment variable")
     # Email Configuration
     gmail_email = os.getenv('GMAIL_EMAIL', '')
     gmail_password = os.getenv('GMAIL_APP_PASSWORD', '')

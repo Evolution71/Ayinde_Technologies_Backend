@@ -30,7 +30,7 @@ import logging
 from database import get_db
 from auth import get_current_user
 from models import User, ServiceOrder, ServiceTier, ServiceSubscription, PromoCode
-from square_payment import payment_processor
+from stripe_payment import payment_processor
 from email_utils import email_sender
 
 logger = logging.getLogger(__name__)
