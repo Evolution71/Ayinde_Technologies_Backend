@@ -19,7 +19,7 @@ try:
         SQUARE_SDK_AVAILABLE = True
         SQUARE_SDK_VERSION = "new"
     except (ImportError, ModuleNotFoundError):
-        # Fall back to older SDK version
+        # Fall back to older SDK versions
         from squareup.client import Client as SquareClient
         from squareup.exceptions.api_exception import APIException
         SQUARE_SDK_AVAILABLE = True
