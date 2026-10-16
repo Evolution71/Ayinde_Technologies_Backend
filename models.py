@@ -781,3 +781,79 @@ class ContactMessage(Base):
     subject = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+# ════════════════════════════════════════════════════════════════════════════════
+# CRM (Wave 1): contacts, bookings, forms
+# ════════════════════════════════════════════════════════════════════════════════
+
+PIPELINE_STAGES = ["new", "contacted", "qualified", "proposal", "won", "lost"]
+
+
+class Contact(Base):
+    """
+    CRM contact. One row per person (matched by email).
+
+    Every capture source (contact form, booking, custom forms) creates or
+    updates a contact, so each person has one record with full history.
+    """
+    __tablename__ = "contacts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    phone = Column(String(50))
+    company = Column(String(150))
+    source = Column(String(50), default="website")
+    pipeline_stage = Column(String(30), default="new", index=True)
+    tags = Column(String(500), default="")          # comma-separated, e.g. "vip,newsletter"
+    notes = Column(Text)
+    last_contacted_at = Column(DateTime)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class Booking(Base):
+    """
+    Booking requests from the website. preferred_start is stored as naive UTC.
+    """
+    __tablename__ = "bookings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    phone = Column(String(50))
+    company = Column(String(150))
+    service_interest = Column(String(100))
+    preferred_start = Column(DateTime, nullable=False, index=True)
+    notes = Column(Text)
+    status = Column(String(20), default="requested", index=True)  # requested, confirmed, completed, cancelled
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class FormDefinition(Base):
+    """
+    A form built by an admin. fields is a JSON list:
+    [{"key": "budget", "label": "Budget", "type": "select", "required": true, "options": ["<$1k", "$1k+"]}]
+    Supported types: text, email, phone, textarea, select, checkbox.
+    """
+    __tablename__ = "form_definitions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slug = Column(String(100), unique=True, nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text)
+    fields = Column(JSON, nullable=False, default=list)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class FormSubmission(Base):
+    __tablename__ = "form_submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    form_id = Column(Integer, ForeignKey("form_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
+    data = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

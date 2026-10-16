@@ -45,6 +45,9 @@ from routers.lessons import router as lessons_router
 from routers.projects import router as projects_router
 from routers.contact import router as contact_router
 from routers.seed import router as seed_router
+from routers.crm import router as crm_router
+from routers.bookings import router as bookings_router
+from routers.forms import router as forms_router
 
 # Import database
 from database import engine, get_db
@@ -136,6 +139,11 @@ app.include_router(services_router)
 # Security & Forms
 app.include_router(captcha_router)
 app.include_router(contact_router)
+
+# CRM & Marketing (Wave 1)
+app.include_router(crm_router)
+app.include_router(bookings_router)
+app.include_router(forms_router)
 
 # Public Content
 app.include_router(achievements_router)
@@ -264,12 +272,12 @@ async def startup_event():
     logger.info("[Startup] 🔍 Configuration Status:")
 
     # Square Payment Configuration
-        # Stripe Payment Configuration
-    stripe_key = os.getenv('STRIPE_SECRET_KEY', '')
-    if stripe_key:
-        logger.info("[Startup] ✅ Stripe Payment: Configured")
+    square_token = os.getenv('SQUARE_ACCESS_TOKEN', '')
+    if square_token:
+        logger.info("[Startup] ✅ Square Payment: Configured")
     else:
-        logger.error("[Startup] ❌ Stripe Payment: NOT configured - Set STRIPE_SECRET_KEY environment variable")
+        logger.error("[Startup] ❌ Square Payment: NOT configured - Set SQUARE_ACCESS_TOKEN environment variable")
+
     # Email Configuration
     gmail_email = os.getenv('GMAIL_EMAIL', '')
     gmail_password = os.getenv('GMAIL_APP_PASSWORD', '')
