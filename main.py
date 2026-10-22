@@ -48,6 +48,7 @@ from routers.seed import router as seed_router
 from routers.crm import router as crm_router
 from routers.bookings import router as bookings_router
 from routers.forms import router as forms_router
+from routers.inquiries import router as inquiries_router
 
 # Import database
 from database import engine, get_db
@@ -144,6 +145,7 @@ app.include_router(contact_router)
 app.include_router(crm_router)
 app.include_router(bookings_router)
 app.include_router(forms_router)
+app.include_router(inquiries_router)
 
 # Public Content
 app.include_router(achievements_router)

@@ -272,6 +272,9 @@ class ContactRequest(BaseModel):
     email: EmailStr
     subject: str
     message: str
+    phone: Optional[str] = None
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
 
 class ContactForm(ContactRequest):
     """Alias for ContactRequest - used by contact.py"""
