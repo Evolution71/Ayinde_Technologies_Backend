@@ -20,9 +20,16 @@ from sqlalchemy.orm import Session
 from database import get_db
 import models
 
-SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-key-change-me")
+# Accept either variable name (main.py's startup check looks for JWT_SECRET_KEY).
+SECRET_KEY = (
+    os.getenv("SECRET_KEY")
+    or os.getenv("JWT_SECRET_KEY")
+    or "dev-only-insecure-key-change-me"
+)
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+# 7 days by default. 60 minutes was logging people out mid-checkout while the
+# frontend still showed them as signed in.
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "10080"))
 
 if SECRET_KEY == "dev-only-insecure-key-change-me":
     print(
