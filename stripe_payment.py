@@ -1,12 +1,15 @@
 """
 Stripe payment processing for Ayinde Technologies.
 
-Drop-in replacement for square_payment.py. Exposes the same
-payment_processor.charge_card(...) interface that routers/payments.py
-and routers/services.py already call.
-
 Backend env var: STRIPE_SECRET_KEY (sk_test_... or sk_live_...)
-The publishable key (pk_...) goes in the frontend, not Railway.
+The publishable key (pk_...) goes in the frontend (REACT_APP_STRIPE_PUBLISHABLE_KEY).
+
+Flows:
+  - One-off purchase: the frontend creates a PaymentMethod (pm_...) and the backend
+    charges it with charge_card().
+  - Saved card for trial auto-charge: the backend creates a Stripe Customer and a
+    SetupIntent; the frontend confirms the SetupIntent with Stripe.js and the backend
+    stores the resulting payment method. charge_saved() charges it off-session later.
 """
 
 import os
@@ -18,7 +21,7 @@ import stripe
 
 logger = logging.getLogger(__name__)
 
-# Map Stripe error codes to the error_type values the Square version returned
+# Map Stripe error codes to the error_type values the rest of the app expects
 STRIPE_ERROR_TYPES = {
     "card_declined": "CARD_DECLINED",
     "insufficient_funds": "INSUFFICIENT_FUNDS",
@@ -30,7 +33,7 @@ STRIPE_ERROR_TYPES = {
 
 
 class StripePaymentProcessor:
-    """Charge cards via Stripe PaymentIntents"""
+    """Charge cards and manage customers through Stripe."""
 
     def __init__(self):
         self.secret_key = os.getenv("STRIPE_SECRET_KEY", "").strip()
@@ -43,6 +46,8 @@ class StripePaymentProcessor:
         else:
             logger.error("❌ STRIPE_SECRET_KEY not set. Payment processing disabled.")
 
+    # ----- one-off purchases -------------------------------------------------
+
     def charge_card(
         self,
         source_id: str,               # Stripe PaymentMethod id (pm_...) sent from the frontend
@@ -51,19 +56,17 @@ class StripePaymentProcessor:
         description: str = "",
         idempotency_key: Optional[str] = None,
     ) -> Tuple[bool, Dict]:
-        """
-        Charge a card. Returns (success, result_dict) with the same keys
-        the Square version returned, so callers don't change.
-        """
+        """Charge a PaymentMethod once. Returns (success, result_dict)."""
         if not self.enabled:
+            return self._disabled()
+
+        if not source_id or not source_id.startswith("pm_"):
             return False, {
                 "success": False,
-                "error_code": "PAYMENT_PROCESSOR_DISABLED",
-                "message": "Payment processing is not configured",
+                "error_code": "INVALID_PAYMENT_METHOD",
+                "error_type": "INVALID_CARD",
+                "message": "Card details were not received. Please enter your card again.",
             }
-
-        if not idempotency_key:
-            idempotency_key = str(uuid_lib.uuid4())
 
         try:
             intent = stripe.PaymentIntent.create(
@@ -73,11 +76,77 @@ class StripePaymentProcessor:
                 confirm=True,
                 payment_method_types=["card"],
                 description=description or None,
-                idempotency_key=idempotency_key,
+                idempotency_key=idempotency_key or str(uuid_lib.uuid4()),
             )
         except Exception as e:
             return self._handle_error(e)
 
+        return self._result(intent)
+
+    # ----- customers and saved cards ----------------------------------------
+
+    def ensure_customer(self, email: str, name: str, user_id: int, existing_id: Optional[str] = None) -> str:
+        """Return the Stripe customer id for this user, creating one if needed."""
+        if existing_id:
+            return existing_id
+        customer = stripe.Customer.create(
+            email=email,
+            name=name or None,
+            metadata={"user_id": str(user_id)},
+            idempotency_key=f"customer-user-{user_id}",
+        )
+        return customer.id
+
+    def create_setup_intent(self, customer_id: str) -> Dict:
+        """Create a SetupIntent for saving a card for later off-session charges."""
+        intent = stripe.SetupIntent.create(
+            customer=customer_id,
+            usage="off_session",
+            payment_method_types=["card"],
+        )
+        return {"id": intent.id, "client_secret": intent.client_secret}
+
+    def retrieve_setup_intent(self, setup_intent_id: str):
+        return stripe.SetupIntent.retrieve(setup_intent_id)
+
+    def charge_saved(
+        self,
+        customer_id: str,
+        payment_method_id: str,
+        amount_cents: int,
+        currency: str = "USD",
+        description: str = "",
+        idempotency_key: Optional[str] = None,
+    ) -> Tuple[bool, Dict]:
+        """Charge a saved card without the customer present (trial auto-charge and retries)."""
+        if not self.enabled:
+            return self._disabled()
+        try:
+            intent = stripe.PaymentIntent.create(
+                amount=int(amount_cents),
+                currency=currency.lower(),
+                customer=customer_id,
+                payment_method=payment_method_id,
+                off_session=True,
+                confirm=True,
+                payment_method_types=["card"],
+                description=description or None,
+                idempotency_key=idempotency_key or str(uuid_lib.uuid4()),
+            )
+        except Exception as e:
+            return self._handle_error(e)
+        return self._result(intent)
+
+    # ----- helpers -------------------------------------------------------------
+
+    def _disabled(self) -> Tuple[bool, Dict]:
+        return False, {
+            "success": False,
+            "error_code": "PAYMENT_PROCESSOR_DISABLED",
+            "message": "Payment processing is not configured",
+        }
+
+    def _result(self, intent) -> Tuple[bool, Dict]:
         if intent.status == "succeeded":
             logger.info(f"✅ Payment successful: {intent.id}")
             return True, {
@@ -89,7 +158,7 @@ class StripePaymentProcessor:
                 "status": intent.status,
             }
 
-        # Anything else (requires_action for 3D Secure, requires_payment_method, etc.) is not a success
+        # requires_action (3D Secure), requires_payment_method, etc. are not successes
         logger.warning(f"Payment not completed. Status: {intent.status}")
         return False, {
             "success": False,
@@ -99,13 +168,11 @@ class StripePaymentProcessor:
         }
 
     def _handle_error(self, e: Exception) -> Tuple[bool, Dict]:
-        # Check attributes rather than exception class names, so this works across stripe-python versions
         code = (getattr(e, "code", None) or "unknown_error").lower()
         user_message = getattr(e, "user_message", None)
         logger.error(f"Stripe error: {type(e).__name__} code={code} detail={str(e)}")
 
         if user_message:
-            # Card errors carry a message that is safe to show the customer
             return False, {
                 "success": False,
                 "error_code": code.upper(),

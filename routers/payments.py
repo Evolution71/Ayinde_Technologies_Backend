@@ -18,6 +18,11 @@ from database import get_db
 from auth import get_current_user
 from models import User, Course, CourseEnrollment, Payment
 from stripe_payment import payment_processor
+
+
+def new_tx_ref() -> str:
+    """Unique payment reference, required by payments.tx_ref (NOT NULL in production)."""
+    return f"AYN-{uuid.uuid4().hex[:24].upper()}"
 import schemas
 
 logger = logging.getLogger(__name__)
@@ -105,10 +110,11 @@ async def create_payment_intent(
             enrollment_id=enrollment.id,
             user_id=current_user.id,
             course_id=course_id,
+            tx_ref=new_tx_ref(),  # required by the database; unique per payment
             amount=float(amount),
             currency=currency,
             status="pending",
-            payment_method="square"
+            payment_method="stripe"
         )
         
         db.add(payment)
@@ -144,13 +150,13 @@ async def verify_payment(
     db: Session = Depends(get_db)
 ):
     """
-    Verify a payment after Square completes the transaction.
+    Verify a payment after Stripe completes the transaction.
     
     Updates the payment status and extends course access if successful.
     
     Request:
     - payment_id: The payment record to verify
-    - nonce: Square payment token (from Square Web Payments SDK)
+    - payment_method_id: Stripe PaymentMethod id (pm_...) created by Stripe.js
     - billing_postal_code: Optional
     - billing_country: Optional
     
@@ -158,7 +164,7 @@ async def verify_payment(
     - status: "success" or "failed"
     - message: Confirmation message
     - access_granted: True if payment successful
-    - transaction_id: Square transaction reference
+    - transaction_id: Stripe transaction reference
     
     Errors:
     - 400: Missing payment_id or nonce
@@ -168,15 +174,21 @@ async def verify_payment(
     
     try:
         payment_id = request_data.get('payment_id')
-        nonce = request_data.get('nonce')
+        # Stripe PaymentMethod id (pm_...). "nonce" is accepted for older frontends.
+        nonce = request_data.get('payment_method_id') or request_data.get('nonce')
         
         logger.info(f"[payments] verify request: payment_id={payment_id}, user={current_user.id}")
         
         if not payment_id or not nonce:
-            logger.warning(f"[payments] Missing payment_id or nonce")
+            logger.warning(f"[payments] Missing payment_id or payment_method_id")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="payment_id and nonce are required"
+                detail="payment_id and payment_method_id are required"
+            )
+        if not str(nonce).startswith("pm_"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Card details were not received. Please enter your card again."
             )
         
         # Get payment
@@ -194,7 +206,7 @@ async def verify_payment(
         
         logger.info(f"[payments] Verifying payment {payment_id}, nonce={nonce[:20]}...")
 
-        # ✅ Call Square API to process the payment
+        # ✅ Call Stripe API to process the payment
         amount_cents = int(payment.amount * 100)
         idempotency_key = f"PAY-{payment.id}-{uuid.uuid4().hex[:12]}"
 
@@ -207,7 +219,7 @@ async def verify_payment(
         )
 
         if not success:
-            # Payment failed via Square API
+            # Payment failed via Stripe API
             error_message = payment_result.get("message", "Payment processing failed")
             error_code = payment_result.get("error_code", "UNKNOWN_ERROR")
             logger.warning(f"[payments] Payment failed: {error_code} - {error_message}")
@@ -226,7 +238,7 @@ async def verify_payment(
                 detail=error_message
             )
 
-        # Payment was successful via Square API
+        # Payment was successful via Stripe API
         payment.status = "completed"
         payment.transaction_id = payment_result.get("payment_id", "")
         payment.paid_at = datetime.now(timezone.utc)
@@ -284,7 +296,7 @@ async def get_payment_status(
     - currency: Currency code
     - course_id: Associated course
     - created_at: When payment was created
-    - transaction_id: Square transaction reference (if completed)
+    - transaction_id: Stripe transaction reference (if completed)
     
     Errors:
     - 404: Payment not found
@@ -362,7 +374,7 @@ async def refund_payment(
                 detail=f"Cannot refund payment with status '{payment.status}'"
             )
         
-        # ✅ TODO: In production, call Square API to refund
+        # ✅ TODO: In production, call Stripe API to refund
         payment.status = "refunded"
         
         # Revert enrollment to trial

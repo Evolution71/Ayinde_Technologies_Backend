@@ -328,7 +328,7 @@ async def create_service_checkout(
         "hours": number (for consultation only),
         "promo_code": "OPTIONAL",
         "amount": number,
-        "payment_method_nonce": "square_nonce_from_payment_form"
+        "payment_method_nonce": "pm_from_stripe_card_element"
     }
 
     Returns: {
@@ -647,7 +647,7 @@ async def create_service_order(
     """
     Create and process a premium service order.
 
-    ✅ TODO: In production, integrate with Square Python SDK to charge card
+    ✅ TODO: In production, integrate with Stripe Python SDK to charge card
     Current implementation marks payment as completed for testing
 
     Error Handling:
@@ -691,7 +691,7 @@ async def create_service_order(
 
         logger.info(f"[services] Processing purchase for user {current_user.id}: tier={tier}, amount={amount}")
 
-        # ✅ CALL SQUARE API TO CHARGE THE CARD
+        # Charge the card through Stripe
         amount_cents = int(amount * 100)  # Convert to cents
         idempotency_key = f"SVC-{current_user.id}-{uuid.uuid4().hex[:12]}"
 
@@ -759,7 +759,7 @@ async def create_service_order(
             service_starts_at=service_starts_at,
             service_ends_at=service_ends_at,
             payment_status="pending",
-            payment_method="square",
+            payment_method="stripe",
             payment_source_id=source_id,
             transaction_id=f"SVC-{current_user.id}-{uuid.uuid4().hex[:8].upper()}",
             order_metadata={
@@ -775,10 +775,10 @@ async def create_service_order(
 
         logger.info(f"[services] Order created: {order.id}")
 
-        # ✅ Mark payment as completed (already verified via Square API above)
+        # ✅ Mark payment as completed (already verified via Stripe API above)
         order.payment_status = "completed"
         order.payment_completed_at = datetime.now(timezone.utc)
-        order.transaction_id = payment_id  # Store the Square payment ID
+        order.transaction_id = payment_id  # Store the Stripe payment ID
         db.commit()
 
         logger.info(f"[services] Payment completed for order {order.id}")

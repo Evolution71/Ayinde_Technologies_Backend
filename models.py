@@ -5,7 +5,7 @@ Tables:
 - User (authentication & profile)
 - Course (course catalog)
 - CourseEnrollment (user enrollments with trial/subscription tracking)
-- Payment (payment records - Square, Flutterwave, etc)
+- Payment (payment records - Stripe, Flutterwave, etc)
 - Lesson (course lessons)
 - LessonProgress (user progress tracking)
 - FAQ (course FAQs)
@@ -51,6 +51,7 @@ class User(Base):
     last_name = Column(String(100))
     password_hash = Column(String(255), nullable=False)
     is_active = Column(Boolean, default=True)
+    stripe_customer_id = Column(String(255), index=True)  # Stripe Customer id (saved cards)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -101,6 +102,13 @@ class Course(Base):
     trial_duration_days = Column(Integer, default=30)
     is_active = Column(Boolean, default=True)
     is_published = Column(Boolean, default=False)
+
+    # YouTube tutorial links (shown on the home page with the exact checkout price)
+    show_on_youtube = Column(Boolean, default=False, nullable=False)
+    youtube_url = Column(String(512))            # recorded lesson on our channel
+    youtube_live_url = Column(String(512))       # live session or premiere, optional
+    practical_code_url = Column(String(512))     # repo, Colab or Codespace with practical code
+    course_notes = Column(Text)                  # one bullet per line
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
@@ -128,7 +136,7 @@ class CourseEnrollment(Base):
     - status: trial, active, expired, cancelled
     - trial_ends_at: When free trial expires
     - access_ends_at: When paid access expires
-    - payment_method_id: Saved payment method (Square nonce)
+    - payment_method_id: Saved Stripe PaymentMethod (pm_...)
     - progress_percentage: User's progress in course (0-100)
     - auto_charge_attempted: Whether auto-charge was attempted
     - last_accessed_at: Last time user accessed course
@@ -147,7 +155,7 @@ class CourseEnrollment(Base):
     status = Column(String(50), default="trial", index=True)  # trial, active, expired, cancelled
     trial_ends_at = Column(DateTime)
     access_ends_at = Column(DateTime)
-    payment_method_id = Column(String(255))  # Square nonce - VARCHAR, not UUID
+    payment_method_id = Column(String(255))  # Stripe PaymentMethod id (pm_...)
     progress_percentage = Column(Float, default=0.0)
     auto_charge_attempted = Column(Boolean, default=False)
     last_accessed_at = Column(DateTime)
@@ -167,7 +175,7 @@ class Payment(Base):
     Payment transaction table.
 
     Supports multiple payment gateways:
-    - Square (square_payment_id, square_receipt_url)
+    - Stripe (transaction_id holds the Stripe PaymentIntent id)
     - Flutterwave (flutterwave_transaction_id, flutterwave_reference, flw_transaction_id)
 
     Status:
@@ -185,13 +193,13 @@ class Payment(Base):
     - amount: Amount charged
     - currency: Currency (USD, NGN, etc)
     - status: pending, completed, failed, refunded
-    - payment_method: square, flutterwave, paystack, etc
+    - payment_method: stripe, flutterwave, paystack, etc
     - payment_link: Payment URL (for Flutterwave redirect)
     - payment_data: Raw response data (JSON)
 
-    Square fields:
-    - square_payment_id: Square payment ID
-    - square_receipt_url: Receipt URL
+    Legacy fields (kept for old rows):
+    - square_payment_id: legacy Square payment ID
+    - square_receipt_url: legacy receipt URL
 
     Flutterwave fields:
     - flutterwave_transaction_id: Flutterwave transaction ID
@@ -227,13 +235,13 @@ class Payment(Base):
 
     # Status and method
     status = Column(String(50), default="pending", index=True)  # pending, completed, failed, refunded
-    payment_method = Column(String(50))  # square, flutterwave, paystack
+    payment_method = Column(String(50))  # stripe, flutterwave, paystack
 
     # Payment link (for redirect flows)
     payment_link = Column(String(512))
     payment_data = Column(JSON)  # Raw response from payment gateway
 
-    # Square-specific
+    # Legacy Square columns (no new writes)
     square_payment_id = Column(String(255), index=True)
     square_receipt_url = Column(String(512))
 
@@ -484,7 +492,7 @@ class ServiceSubscription(Base):
     next_billing_date = Column(DateTime)  # When next payment is due
 
     # Payment
-    payment_method_id = Column(String(255))  # Saved payment method (Square nonce)
+    payment_method_id = Column(String(255))  # Saved Stripe PaymentMethod (pm_...)
     transaction_id = Column(String(255), index=True)  # Transaction reference
 
     # Cancellation
@@ -584,7 +592,7 @@ class ServiceOrder(Base):
     - period: Billing period
     - status: pending, in_progress, completed, cancelled, active
     - payment_status: pending, completed, failed
-    - payment_method: Payment method used (square, etc)
+    - payment_method: Payment method used (stripe, etc)
     - payment_source_id: Payment source ID
     - transaction_id: Transaction reference
     - service_starts_at: When service starts
@@ -621,7 +629,7 @@ class ServiceOrder(Base):
     payment_status = Column(String(50), default="pending")  # pending, completed, failed
 
     # Payment
-    payment_method = Column(String(50))  # square, etc
+    payment_method = Column(String(50))  # stripe, etc
     payment_source_id = Column(String(255))
     transaction_id = Column(String(255), index=True)
     payment_completed_at = Column(DateTime)
@@ -857,3 +865,24 @@ class FormSubmission(Base):
     contact_id = Column(Integer, ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True, index=True)
     data = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class SubscriptionCharge(Base):
+    """
+    Log of automatic charges for trial enrollments (Stripe).
+
+    Written by auto_charge_scheduler.py: one row per attempt. Failed rows are
+    retried until next_retry_at passes.
+    """
+    __tablename__ = "subscription_charges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    enrollment_id = Column(Integer, ForeignKey("enrollments.id"), nullable=False, index=True)
+    amount = Column(Float, nullable=False)
+    status = Column(String(20), nullable=False, default="pending")  # pending, success, failed
+    stripe_payment_id = Column(String(255), index=True)
+    error_message = Column(Text)
+    attempted_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    next_retry_at = Column(DateTime)
+
+    enrollment = relationship("CourseEnrollment")

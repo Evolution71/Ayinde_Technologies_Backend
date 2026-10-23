@@ -5,7 +5,7 @@ Features:
 - Browse courses (public or logged in)
 - Free 30-day trial for all courses
 - Track progress through lessons
-- Payment integration (Square)
+- Payment integration (Stripe)
 - Auto-charge after trial ends
 - Cancel subscription
 
@@ -28,6 +28,7 @@ from typing import List, Optional
 import logging
 
 from database import get_db
+from stripe_payment import payment_processor
 from auth import get_current_user, get_current_user_optional
 from models import User, Course, CourseEnrollment, Lesson, LessonProgress, Payment
 import schemas
@@ -213,6 +214,51 @@ async def enroll_in_course(
 
 # ========== SAVE PAYMENT METHOD (FIXED) ==========
 
+@router.post("/{course_id}/setup-intent/")
+async def create_card_setup_intent(
+    course_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Start saving a card for a trial course (Stripe SetupIntent).
+
+    The frontend confirms the returned client_secret with Stripe.js, then calls
+    save-payment-method with the setup_intent_id.
+    """
+    enrollment = db.query(CourseEnrollment).filter(
+        CourseEnrollment.user_id == current_user.id,
+        CourseEnrollment.course_id == course_id
+    ).first()
+    if not enrollment:
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    if not payment_processor.enabled:
+        raise HTTPException(status_code=503, detail="Card saving is not available right now")
+
+    try:
+        if not current_user.stripe_customer_id:
+            name = " ".join(p for p in [current_user.first_name, current_user.last_name] if p)
+            current_user.stripe_customer_id = payment_processor.ensure_customer(
+                email=current_user.email,
+                name=name,
+                user_id=current_user.id,
+            )
+            db.commit()
+
+        intent = payment_processor.create_setup_intent(current_user.stripe_customer_id)
+    except Exception as e:
+        db.rollback()
+        logger.error(f"[setup-intent] Stripe error for user {current_user.id}: {e}")
+        raise HTTPException(status_code=502, detail="Could not start card setup. Please try again.")
+
+    return {
+        "success": True,
+        "client_secret": intent["client_secret"],
+        "setup_intent_id": intent["id"],
+    }
+
+
 @router.post("/{course_id}/save-payment-method/")
 async def save_payment_method(
     course_id: int,
@@ -221,52 +267,47 @@ async def save_payment_method(
     db: Session = Depends(get_db)
 ):
     """
-    Save Square nonce as payment method for course.
-    
-    CRITICAL FIX: payment_method_id column must be VARCHAR(255), not UUID
-    Square nonces are strings like: cnon:CA4SEDfSnJapyxJ-d10K7bCK6e4YASgB
+    Save the card confirmed through a Stripe SetupIntent as the payment method for a course.
+
+    The SetupIntent must have succeeded and belong to this user's Stripe customer.
     """
-    
-    # Validate nonce exists and is a string
-    if not request.nonce or not isinstance(request.nonce, str):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid nonce: must be a non-empty string"
-        )
-    
     enrollment = db.query(CourseEnrollment).filter(
         CourseEnrollment.user_id == current_user.id,
         CourseEnrollment.course_id == course_id
     ).first()
-    
     if not enrollment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Enrollment not found"
-        )
-    
+        raise HTTPException(status_code=404, detail="Enrollment not found")
+
+    if not current_user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Start card setup first")
+
     try:
-        # Store the nonce string directly
-        # ⚠️ Database column MUST be VARCHAR(255), NOT UUID
-        enrollment.payment_method_id = request.nonce
+        intent = payment_processor.retrieve_setup_intent(request.setup_intent_id)
+    except Exception as e:
+        logger.error(f"[payment-method] Could not retrieve SetupIntent: {e}")
+        raise HTTPException(status_code=400, detail="Card setup could not be verified")
+
+    if intent.status != "succeeded" or intent.customer != current_user.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Card setup was not completed")
+
+    payment_method_id = intent.payment_method if isinstance(intent.payment_method, str) else getattr(intent.payment_method, "id", None)
+    if not payment_method_id or not payment_method_id.startswith("pm_"):
+        raise HTTPException(status_code=400, detail="No card was saved")
+
+    try:
+        enrollment.payment_method_id = payment_method_id
         enrollment.updated_at = datetime.utcnow()
         db.commit()
-        
-        logger.info(f"[payment-method] Saved for user_id={current_user.id}, course_id={course_id}, nonce={request.nonce[:20]}...")
-        
+        logger.info(f"[payment-method] Saved card for user_id={current_user.id}, course_id={course_id}")
         return {
             "success": True,
             "message": "Payment method saved successfully",
             "enrollment_id": enrollment.id
         }
-    
     except Exception as e:
         db.rollback()
-        logger.error(f"[payment-method] Error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to save payment method: {str(e)}"
-        )
+        logger.error(f"[payment-method] Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to save payment method")
 
 
 # ========== CANCEL SUBSCRIPTION ==========
@@ -373,6 +414,44 @@ async def get_courses(db: Session = Depends(get_db)):
             for c in courses
         ]
     }
+
+def _youtube_course_out(c: Course) -> dict:
+    """Public shape of a course on the YouTube section. Price is the exact checkout price."""
+    return {
+        "id": c.id,
+        "title": c.title,
+        "description": c.description,
+        "instructor": c.instructor,
+        "level": c.level,
+        "duration": c.duration,
+        "price": c.price,
+        "currency": c.currency or "USD",
+        "youtube_url": c.youtube_url,
+        "youtube_live_url": c.youtube_live_url,
+        "practical_code_url": c.practical_code_url,
+        "notes": [line.strip() for line in (c.course_notes or "").splitlines() if line.strip()],
+        "checkout_url": f"/checkout/{c.id}",
+    }
+
+
+@router.get("/youtube/")
+async def get_youtube_courses(db: Session = Depends(get_db)):
+    """
+    Courses that are published on our YouTube channel.
+    Only courses with show_on_youtube = true, is_published = true and is_active = true are returned.
+    """
+    rows = (
+        db.query(Course)
+        .filter(
+            Course.is_published == True,
+            Course.is_active == True,
+            Course.show_on_youtube == True,
+        )
+        .order_by(Course.id)
+        .all()
+    )
+    return {"success": True, "courses": [_youtube_course_out(c) for c in rows]}
+
 
 # ========== GET COURSE DETAILS ==========
 

@@ -310,7 +310,7 @@ class PaymentResponse(BaseModel):
     amount: float
     currency: str
     status: str
-    square_payment_id: Optional[str] = None
+    stripe_payment_id: Optional[str] = None
     created_at: Optional[datetime] = None
 
     class Config:
@@ -356,8 +356,8 @@ class CaptchaVerifyResponse(BaseModel):
 # ========== PAYMENT SCHEMAS ==========
 
 class SavePaymentMethodRequest(BaseModel):
-    """Request to save a payment method (Square nonce)"""
-    nonce: str
+    """Request to save a card confirmed through a Stripe SetupIntent"""
+    setup_intent_id: str = Field(..., min_length=5, max_length=255)
 
     class Config:
         from_attributes = True
