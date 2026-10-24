@@ -1,8 +1,8 @@
 """
-Sync service_tiers rows with the official Ayinde service fliers.
+Add missing service_tiers rows, using the Ayinde service fliers as a starting point.
 
-The /api/services/tiers endpoint (used by the home page) reads these rows.
-Checkout does NOT read them: it uses service_pricing.py. Keep both in step.
+Your database is the source of truth for prices. This script only inserts rows that
+do not exist yet. It never updates an existing row.
 
 - Website:      starter 297, professional 497, advanced 697, premium 897 per month
 - Applications: starter 897, professional 1097, advanced 1297, premium 1497 per month
@@ -108,29 +108,29 @@ def _package_fields(service_type, tier):
 
 
 def sync():
+    """
+    Adds any package that is missing from service_tiers. Existing rows are never
+    changed, so prices you have set in the database are kept as they are.
+    """
     db = SessionLocal()
     try:
         now = datetime.now(timezone.utc)
-        created = updated = 0
+        created = skipped = 0
         for (service_type, tier), features in FEATURES.items():
-            fields = _package_fields(service_type, tier)
             row = db.query(ServiceTier).filter(
                 ServiceTier.service_type == service_type,
                 ServiceTier.tier == tier,
             ).first()
-            if row is None:
-                row = ServiceTier(service_type=service_type, tier=tier, is_active=True, created_at=now)
-                db.add(row)
-                created += 1
-            else:
-                updated += 1
-            for key, value in fields.items():
-                setattr(row, key, value)
-            row.features = features
-            row.is_active = True
-            row.updated_at = now
+            if row is not None:
+                skipped += 1
+                continue
+            fields = _package_fields(service_type, tier)
+            row = ServiceTier(service_type=service_type, tier=tier, is_active=True, created_at=now,
+                              features=features, updated_at=now, **fields)
+            db.add(row)
+            created += 1
         db.commit()
-        print(f"Service tiers synced: {created} created, {updated} updated.")
+        print(f"Service tiers: {created} added, {skipped} existing rows left unchanged.")
     finally:
         db.close()
 

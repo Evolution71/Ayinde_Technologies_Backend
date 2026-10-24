@@ -704,7 +704,7 @@ async def create_service_order(
         # only checked against it, so a customer cannot change what they pay.
         try:
             server_amount, server_period = compute_service_amount(
-                service_type, tier, payment_option, body.get("hours")
+                service_type, tier, payment_option, body.get("hours"), db=db
             )
         except ValueError as price_error:
             raise HTTPException(status_code=400, detail=str(price_error))
