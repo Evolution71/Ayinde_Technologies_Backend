@@ -32,17 +32,29 @@ Base.metadata.create_all(bind=engine)
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["inquiries"])
 
-# Prices copied from the PHP handlers
-WEB_PLANS = {"Basic": 297.00, "Intermediate": 497.00, "Advanced": 697.00, "Custom": 500.00}
-APP_PLANS = {"MVP": 897.00, "CrossPlatform": 1097.00, "Native": 1297.00, "Enterprise": 1000.00}
+# Prices from the official Ayinde service fliers (see service_pricing.py).
+# Both the flier names and the older names are accepted so existing forms still work.
+WEB_PLANS = {
+    "Starter": 297.00, "Basic": 297.00,
+    "Professional": 497.00, "Intermediate": 497.00,
+    "Advanced": 697.00,
+    "Premium": 897.00, "Custom": 897.00,
+}
+APP_PLANS = {
+    "Starter": 897.00, "MVP": 897.00,
+    "Professional": 1097.00, "CrossPlatform": 1097.00,
+    "Advanced": 1297.00, "Native": 1297.00,
+    "Premium": 1497.00, "Enterprise": 1497.00,
+}
+# Minimum package totals: Starter 1 hr x $50, Standard 3 hrs x $100, Enterprise 10 hrs x $300
 CONSULT_PLANS = {"Starter": 50.00, "Standard": 300.00, "Enterprise": 3000.00}
-# Premium prices shown on the premium page. Totals for the longer plans are the
-# monthly price x months (quarterly x3, bi-annual x6, annual x12). Confirm before go-live.
+# Premium (Supreme VIP Platinum) at $2,394/month. Longer plans use the same
+# discount rules as service_pricing.py (quarterly 5%, annual 10%).
 PREMIUM_PLANS = {
     "Monthly": 2394.00,
-    "Quarterly": 2154.00 * 3,
-    "BiAnnually": 2034.00 * 6,
-    "Annually": 1915.00 * 12,
+    "Quarterly": 2394.00 * 3 * 0.95,
+    "BiAnnually": 2394.00 * 6,
+    "Annually": 2394.00 * 12 * 0.90,
 }
 
 

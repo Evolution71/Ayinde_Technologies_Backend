@@ -31,6 +31,7 @@ from database import get_db
 from auth import get_current_user
 from models import User, ServiceOrder, ServiceTier, ServiceSubscription, PromoCode
 from stripe_payment import payment_processor
+from service_pricing import compute_service_amount
 from email_utils import email_sender
 
 logger = logging.getLogger(__name__)
@@ -691,8 +692,29 @@ async def create_service_order(
 
         logger.info(f"[services] Processing purchase for user {current_user.id}: tier={tier}, amount={amount}")
 
+        # The server sets the price from service_pricing. The browser amount is
+        # only checked against it, so a customer cannot change what they pay.
+        try:
+            server_amount, server_period = compute_service_amount(
+                service_type, tier, payment_option, body.get("hours")
+            )
+        except ValueError as price_error:
+            raise HTTPException(status_code=400, detail=str(price_error))
+
+        if abs(server_amount - amount) > 0.01:
+            logger.warning(
+                f"[services] Price mismatch for user {current_user.id}: "
+                f"client={amount} server={server_amount} tier={tier} option={payment_option}"
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="The price for this package has changed. Please refresh the page and try again."
+            )
+        amount = server_amount
+        period = server_period
+
         # Charge the card through Stripe
-        amount_cents = int(amount * 100)  # Convert to cents
+        amount_cents = int(round(amount * 100))  # Convert to cents
         idempotency_key = f"SVC-{current_user.id}-{uuid.uuid4().hex[:12]}"
 
         success, payment_result = payment_processor.charge_card(
