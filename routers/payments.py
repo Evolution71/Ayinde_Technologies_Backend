@@ -16,6 +16,7 @@ import uuid
 
 from database import get_db
 from auth import get_current_user
+from admin import require_admin
 from models import User, Course, CourseEnrollment, Payment
 from stripe_payment import payment_processor
 
@@ -340,61 +341,63 @@ async def get_payment_status(
 @router.post("/{payment_id}/refund/")
 async def refund_payment(
     payment_id: int,
-    current_user: User = Depends(get_current_user),
+    admin_user: User = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
     """
-    Refund a completed payment.
-    
-    Only completed payments can be refunded.
-    
-    Returns: Refund confirmation
-    
+    Refund a completed payment through Stripe. Admins only.
+
     Errors:
-    - 404: Payment not found
-    - 403: Access denied
-    - 400: Cannot refund this payment (not completed or already refunded)
+    - 403: caller is not an admin
+    - 404: payment not found
+    - 400: payment is not completed
+    - 502: Stripe refused or could not be reached (the payment is left unchanged)
     """
-    
     try:
-        payment = db.query(Payment).filter(
-            Payment.id == payment_id,
-            Payment.user_id == current_user.id
-        ).first()
-        
+        payment = db.query(Payment).filter(Payment.id == payment_id).first()
+
         if not payment:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Payment not found"
             )
-        
+
         if payment.status != "completed":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Cannot refund payment with status '{payment.status}'"
             )
-        
-        # ✅ TODO: In production, call Stripe API to refund
+
+        ok, result = payment_processor.refund_payment(
+            payment.stripe_payment_id or "",
+            idempotency_key=f"REFUND-{payment.id}",
+        )
+        if not ok:
+            logger.warning(f"[payments] Stripe refund failed for payment {payment_id}: {result.get('message')}")
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=result.get("message", "Stripe refund failed")
+            )
+
         payment.status = "refunded"
-        
-        # Revert enrollment to trial
+
+        # Move the enrollment back to trial
         enrollment = db.query(CourseEnrollment).filter(
             CourseEnrollment.id == payment.enrollment_id
         ).first()
-        
         if enrollment:
             enrollment.status = "trial"
-        
+
         db.commit()
-        
-        logger.info(f"[payments] Payment refunded: {payment_id}")
-        
+        logger.info(f"[payments] Payment {payment_id} refunded by admin {admin_user.id}, refund {result.get('refund_id')}")
+
         return {
             "status": "success",
             "message": "Payment refunded successfully",
-            "payment_id": payment.id
+            "payment_id": payment.id,
+            "refund_id": result.get("refund_id"),
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:

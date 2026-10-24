@@ -41,6 +41,7 @@ router = APIRouter(prefix="/api/services", tags=["services"])
 # SERVICE TIERS - Get pricing by service type
 # ════════════════════════════════════════════════════════════════════════════════
 
+@router.get("/tiers/{service_type}/", include_in_schema=False)
 @router.get("/tiers/{service_type}")
 async def get_service_tiers(
     service_type: str,
@@ -342,6 +343,13 @@ async def create_service_checkout(
         "message": "string"
     }
     """
+    # Retired: this created a subscription without charging the card.
+    # Customers pay through POST /api/services/purchase/.
+    raise HTTPException(
+        status_code=410,
+        detail="This checkout endpoint is retired. Use /api/services/purchase/ instead."
+    )
+
     try:
         body = await request.json()
 

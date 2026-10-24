@@ -83,6 +83,27 @@ class StripePaymentProcessor:
 
         return self._result(intent)
 
+    def refund_payment(self, payment_intent_id: str, idempotency_key: Optional[str] = None) -> Tuple[bool, Dict]:
+        """Refund a PaymentIntent in full. Returns (success, result_dict)."""
+        if not self.enabled:
+            return self._disabled()
+        if not payment_intent_id or not payment_intent_id.startswith("pi_"):
+            return False, {
+                "success": False,
+                "error_code": "NO_STRIPE_PAYMENT",
+                "message": "This payment has no Stripe reference, so it cannot be refunded automatically.",
+            }
+        try:
+            refund = stripe.Refund.create(
+                payment_intent=payment_intent_id,
+                idempotency_key=idempotency_key or str(uuid_lib.uuid4()),
+            )
+        except Exception as e:
+            return self._handle_error(e)
+        if refund.status in ("succeeded", "pending"):
+            return True, {"success": True, "refund_id": refund.id, "status": refund.status}
+        return False, {"success": False, "message": f"Stripe refund status: {refund.status}"}
+
     # ----- customers and saved cards ----------------------------------------
 
     def ensure_customer(self, email: str, name: str, user_id: int, existing_id: Optional[str] = None) -> str:

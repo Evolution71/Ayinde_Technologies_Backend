@@ -254,6 +254,14 @@ async def general_exception_handler(request, exc):
 @app.on_event("startup")
 async def startup_event():
     """Log startup information and validate environment configuration."""
+    # Trial auto-charge and retry jobs. Runs in this process, so keep one replica
+    # or the charges will run once per replica.
+    try:
+        from auto_charge_scheduler import start_scheduler
+        start_scheduler()
+    except Exception as exc:
+        logger.error(f"[Startup] Auto-charge scheduler failed to start: {exc}")
+
     logger.info("════════════════════════════════════════════════════════════════════════════════")
     logger.info("🚀 Ayinde Technologies API Starting")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
