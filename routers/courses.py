@@ -99,10 +99,15 @@ async def get_enrollment_status(
     ).first()
     
     if not enrollment:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enrolled in this course"
-        )
+        # Not an error: the learner simply has not started this course yet
+        return {
+            "course_id": course_id,
+            "status": "not_enrolled",
+            "trial_ends_at": None,
+            "days_remaining": 0,
+            "has_payment_method": False,
+            "enrolled_at": None,
+        }
     
     now = datetime.utcnow()
     days_remaining = 0
