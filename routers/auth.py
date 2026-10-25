@@ -26,7 +26,10 @@ from email_utils import email_sender
 import schemas
 
 # Where the reset link points (the public website)
-FRONTEND_URL = os.getenv("FRONTEND_URL", "https://ayindetechnologies.com").rstrip("/")
+# PUBLIC_SITE_URL is separate from FRONTEND_URL, which can hold a list of allowed origins.
+# Only the first address is used, so the link can never contain a comma-separated list.
+_site = (os.getenv("PUBLIC_SITE_URL") or "https://ayindetechnologies.com").split(",")[0].strip().rstrip("/")
+FRONTEND_URL = _site if _site.startswith("http") else f"https://{_site}"
 RESET_LINK_MINUTES = 30
 
 
