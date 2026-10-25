@@ -21,9 +21,10 @@ Existing Endpoints:
 - POST /api/services/orders/{order_id}/cancel/ - Cancel order
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, BackgroundTasks
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
+from starlette.concurrency import run_in_threadpool
 import uuid
 import logging
 
@@ -650,6 +651,7 @@ async def get_service(service_id: int, db: Session = Depends(get_db)):
 @router.post("/purchase/")
 async def create_service_order(
     request: Request,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -723,14 +725,19 @@ async def create_service_order(
 
         # Charge the card through Stripe
         amount_cents = int(round(amount * 100))  # Convert to cents
-        idempotency_key = f"SVC-{current_user.id}-{uuid.uuid4().hex[:12]}"
+        # The browser sends one key per checkout attempt, so a retry after a timeout
+        # cannot charge the card twice. Fall back to a fresh key if none was sent.
+        client_key = str(body.get("idempotencyKey") or "").strip()[:100]
+        idempotency_key = f"SVC-{current_user.id}-{client_key}" if client_key else f"SVC-{current_user.id}-{uuid.uuid4().hex[:12]}"
 
-        success, payment_result = payment_processor.charge_card(
+        # Run the Stripe call in a thread so a slow call does not block other requests
+        success, payment_result = await run_in_threadpool(
+            payment_processor.charge_card,
             source_id=source_id,
             amount_cents=amount_cents,
             currency=currency,
             description=f"{tier_name} - {service_type}",
-            idempotency_key=idempotency_key
+            idempotency_key=idempotency_key,
         )
 
         # If payment failed, return error immediately
@@ -739,11 +746,13 @@ async def create_service_order(
             logger.warning(f"[services] Payment failed for user {current_user.id}: {error_message}")
 
             # Send failure notification email
-            email_sender.send_payment_failed_notification(
+            # Sent in the background so the customer gets the error straight away
+            background_tasks.add_task(
+                email_sender.send_payment_failed_notification,
                 to_email=email,
                 full_name=full_name,
                 tier_name=tier_name,
-                reason=error_message
+                reason=error_message,
             )
 
             raise HTTPException(
@@ -814,7 +823,9 @@ async def create_service_order(
         logger.info(f"[services] Payment completed for order {order.id}")
 
         # Send confirmation email to customer
-        email_sender.send_order_confirmation(
+        # Sent in the background so a slow mail server cannot delay the receipt
+        background_tasks.add_task(
+            email_sender.send_order_confirmation,
             to_email=email,
             full_name=full_name,
             tier_name=tier_name,
@@ -823,7 +834,7 @@ async def create_service_order(
             service_type=service_type,
             transaction_id=payment_id,
             service_starts_at=service_starts_at.isoformat(),
-            service_ends_at=service_ends_at.isoformat()
+            service_ends_at=service_ends_at.isoformat(),
         )
 
         return {

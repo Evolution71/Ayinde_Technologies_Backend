@@ -4,6 +4,7 @@ Handles sending confirmation emails via Gmail SMTP
 """
 
 import smtplib
+import requests
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
@@ -20,7 +21,11 @@ class EmailSender:
         self.smtp_port = 587
         self.sender_email = os.getenv("GMAIL_EMAIL", "")
         self.sender_password = os.getenv("GMAIL_APP_PASSWORD", "")
-        self.enabled = bool(self.sender_email and self.sender_password)
+        # Resend sends over HTTPS, so it works where outbound SMTP is blocked.
+        # When RESEND_API_KEY is set, it is used instead of Gmail SMTP.
+        self.resend_key = os.getenv("RESEND_API_KEY", "")
+        self.from_address = os.getenv("EMAIL_FROM", "") or self.sender_email or "support@ayindetechnologies.com"
+        self.enabled = bool(self.resend_key or (self.sender_email and self.sender_password))
 
         if self.enabled:
             logger.info(f"✅ Email system initialized with: {self.sender_email}")
@@ -200,8 +205,36 @@ class EmailSender:
             return False
 
     def _send_email(self, to_email: str, subject: str, html_content: str) -> bool:
-        """Internal method to send email via SMTP"""
+        """Send one email, using Resend when configured and Gmail SMTP otherwise."""
+        if self.resend_key:
+            return self._send_via_resend(to_email, subject, html_content)
+        return self._send_via_smtp(to_email, subject, html_content)
 
+    def _send_via_resend(self, to_email: str, subject: str, html_content: str) -> bool:
+        """Send through the Resend HTTP API."""
+        try:
+            response = requests.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {self.resend_key}"},
+                json={
+                    "from": self.from_address,
+                    "to": [to_email],
+                    "subject": subject,
+                    "html": html_content,
+                },
+                timeout=15,
+            )
+            if response.status_code in (200, 201):
+                logger.info(f"✅ Email sent via Resend to {to_email}")
+                return True
+            logger.error(f"❌ Resend rejected email to {to_email}: {response.status_code} {response.text[:200]}")
+            return False
+        except Exception as e:
+            logger.error(f"❌ Resend request failed for {to_email}: {str(e)}")
+            return False
+
+    def _send_via_smtp(self, to_email: str, subject: str, html_content: str) -> bool:
+        """Send through Gmail SMTP."""
         try:
             msg = MIMEMultipart("alternative")
             msg["Subject"] = subject
@@ -213,7 +246,8 @@ class EmailSender:
             msg.attach(part)
 
             # Send email
-            with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            # Time out so a blocked SMTP port cannot hang a payment request
+            with smtplib.SMTP(self.smtp_server, self.smtp_port, timeout=15) as server:
                 server.starttls()
                 server.login(self.sender_email, self.sender_password)
                 server.send_message(msg)
