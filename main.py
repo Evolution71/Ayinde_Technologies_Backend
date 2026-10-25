@@ -48,7 +48,7 @@ from routers.seed import router as seed_router
 from routers.crm import router as crm_router
 from routers.bookings import router as bookings_router
 from routers.forms import router as forms_router
-from routers.inquiries import router as inquiries_router
+from routers.console import router as console_router, public_router as console_public_router
 
 # Import database
 from database import engine, get_db
@@ -145,7 +145,10 @@ app.include_router(contact_router)
 app.include_router(crm_router)
 app.include_router(bookings_router)
 app.include_router(forms_router)
-app.include_router(inquiries_router)
+
+# Admin console (client management) + its public intake endpoints
+app.include_router(console_router)
+app.include_router(console_public_router)
 
 # Public Content
 app.include_router(achievements_router)
@@ -254,14 +257,6 @@ async def general_exception_handler(request, exc):
 @app.on_event("startup")
 async def startup_event():
     """Log startup information and validate environment configuration."""
-    # Trial auto-charge and retry jobs. Runs in this process, so keep one replica
-    # or the charges will run once per replica.
-    try:
-        from auto_charge_scheduler import start_scheduler
-        start_scheduler()
-    except Exception as exc:
-        logger.error(f"[Startup] Auto-charge scheduler failed to start: {exc}")
-
     logger.info("════════════════════════════════════════════════════════════════════════════════")
     logger.info("🚀 Ayinde Technologies API Starting")
     logger.info("════════════════════════════════════════════════════════════════════════════════")
@@ -281,13 +276,12 @@ async def startup_event():
     logger.info("")
     logger.info("[Startup] 🔍 Configuration Status:")
 
-    # Stripe Payment Configuration
-    stripe_key = os.getenv('STRIPE_SECRET_KEY', '').strip()
-    if stripe_key:
-        mode = 'live' if stripe_key.startswith('sk_live_') else 'test'
-        logger.info(f"[Startup] ✅ Stripe Payment: Configured ({mode} mode)")
+    # Square Payment Configuration
+    square_token = os.getenv('SQUARE_ACCESS_TOKEN', '')
+    if square_token:
+        logger.info("[Startup] ✅ Square Payment: Configured")
     else:
-        logger.error("[Startup] ❌ Stripe Payment: NOT configured - Set STRIPE_SECRET_KEY environment variable")
+        logger.error("[Startup] ❌ Square Payment: NOT configured - Set SQUARE_ACCESS_TOKEN environment variable")
 
     # Email Configuration
     gmail_email = os.getenv('GMAIL_EMAIL', '')
