@@ -201,6 +201,32 @@ def my_services(current_user: User = Depends(get_current_user), db: Session = De
     } for s in services]
 
 
+class HrWiseDemoIn(PersonIn):
+    company: str = Field(..., min_length=1, max_length=150)
+    employee_count: int = Field(..., ge=1, le=1000000)
+    message: Optional[str] = Field(None, max_length=5000)
+    terms_accepted: bool = False
+
+
+@router.post("/inquiries/hr-wise-demo/", status_code=status.HTTP_201_CREATED)
+def hr_wise_demo_inquiry(body: HrWiseDemoIn, db: Session = Depends(get_db)):
+    """Demo request for HR-Wise. Online subscription is not open yet, so no payment is taken here."""
+    if not body.terms_accepted:
+        raise HTTPException(status_code=400, detail="You must accept the Privacy Policy and Terms of Service.")
+
+    client = _get_or_create_client(db, body)
+    svc = im.ClientService(client_id=client.id, service_type="HR-Wise Demo",
+                           tracking_reference=_tracking("AY-HR"), status="Pending")
+    db.add(svc)
+    db.flush()
+    db.add(im.ProjectStartup(client_service_id=svc.id, company_name=body.company,
+                             service_type="HR-Wise", budget_range="Not specified",
+                             project_details=f"Employees: {body.employee_count}\n{body.message or ''}".strip(),
+                             attachments="[]"))
+    db.commit()
+    return {"success": True, "tracking_reference": svc.tracking_reference}
+
+
 @router.post("/newsletter/subscribe/", status_code=status.HTTP_201_CREATED)
 def subscribe_newsletter(body: NewsletterIn, db: Session = Depends(get_db)):
     email = body.email.lower()

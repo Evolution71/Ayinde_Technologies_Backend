@@ -3,7 +3,13 @@ Authentication router - login, register, logout, get current user.
 FIXED to match actual User model schema with password_hash and first_name/last_name
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import hashlib
+import os
+import re
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -11,10 +17,42 @@ from auth import (
     hash_password,
     verify_password,
     create_access_token,
+    decode_access_token,
     get_current_user,
 )
 from models import User
+from security import verify_captcha
+from email_utils import email_sender
 import schemas
+
+# Where the reset link points (the public website)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "https://ayindetechnologies.com").rstrip("/")
+RESET_LINK_MINUTES = 30
+
+
+def _check_password(password: str) -> None:
+    """Same rule the sign-up form shows: 8+ characters with a letter and a number."""
+    if len(password or "") < 8 or not re.search(r"[A-Za-z]", password) or not re.search(r"\d", password):
+        raise HTTPException(
+            status_code=400,
+            detail="Password must be at least 8 characters and include a letter and a number.",
+        )
+
+
+def _password_fingerprint(password_hash: str) -> str:
+    """Ties a reset link to the current password, so it stops working once the password changes."""
+    return hashlib.sha256(password_hash.encode()).hexdigest()[:16]
+
+
+class PasswordForgotIn(BaseModel):
+    email: EmailStr
+    captcha_token: Optional[str] = None
+    captcha_answer: Optional[str] = None
+
+
+class PasswordResetIn(BaseModel):
+    token: str
+    password: str
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -28,6 +66,15 @@ async def register(
     user_data: schemas.UserRegister,
     db: Session = Depends(get_db),
 ):
+    if not user_data.terms_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="Please accept the Privacy Policy and Terms and Conditions to create an account.",
+        )
+    if not verify_captcha(user_data.captcha_token or "", user_data.captcha_answer or ""):
+        raise HTTPException(status_code=400, detail="Invalid CAPTCHA. Please try again.")
+    _check_password(user_data.password)
+
     """
     Register a new user.
 
@@ -181,3 +228,62 @@ async def logout(
         "message": "Logged out successfully",
         "user_id": current_user.id
     }
+
+
+# ========== FORGOT / RESET PASSWORD ==========
+
+@router.post("/forgot-password/")
+async def forgot_password(
+    body: PasswordForgotIn,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """
+    Email a reset link. The reply is the same whether or not the account exists,
+    so people cannot use this form to find out which emails are registered.
+    """
+    if not verify_captcha(body.captcha_token or "", body.captcha_answer or ""):
+        raise HTTPException(status_code=400, detail="Invalid CAPTCHA. Please try again.")
+
+    user = db.query(User).filter(User.email == body.email.lower()).first()
+    if user and user.is_active is not False:
+        token = create_access_token(
+            data={"sub": str(user.id), "purpose": "reset", "pw": _password_fingerprint(user.password_hash)},
+            expires_minutes=RESET_LINK_MINUTES,
+        )
+        reset_link = f"{FRONTEND_URL}/reset-password?token={token}"
+        background_tasks.add_task(
+            email_sender.send_password_reset,
+            to_email=user.email,
+            first_name=user.first_name or "",
+            reset_link=reset_link,
+        )
+
+    return {
+        "success": True,
+        "message": "If an account exists for that email, a reset link has been sent. Check your inbox and spam folder.",
+    }
+
+
+@router.post("/reset-password/")
+async def reset_password(body: PasswordResetIn, db: Session = Depends(get_db)):
+    """Set a new password using the link from the email. The link works once."""
+    invalid = HTTPException(
+        status_code=400,
+        detail="This reset link is invalid or has expired. Please request a new one.",
+    )
+    payload = decode_access_token(body.token)
+    if not payload or payload.get("purpose") != "reset":
+        raise invalid
+
+    try:
+        user = db.query(User).filter(User.id == int(payload.get("sub"))).first()
+    except (TypeError, ValueError):
+        raise invalid
+    if user is None or payload.get("pw") != _password_fingerprint(user.password_hash):
+        raise invalid
+
+    _check_password(body.password)
+    user.password_hash = hash_password(body.password)
+    db.commit()
+    return {"success": True, "message": "Your password has been reset. You can now log in."}

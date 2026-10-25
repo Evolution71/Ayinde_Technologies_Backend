@@ -35,6 +35,7 @@ class UserRegister(BaseModel):
     last_name: str
     email: EmailStr
     password: str
+    terms_accepted: bool = False
     captcha_token: Optional[str] = None
     captcha_answer: Optional[str] = None
 
@@ -273,6 +274,7 @@ class ContactRequest(BaseModel):
     subject: str
     message: str
     phone: Optional[str] = None
+    company: Optional[str] = None
     captcha_token: Optional[str] = None
     captcha_answer: Optional[str] = None
 

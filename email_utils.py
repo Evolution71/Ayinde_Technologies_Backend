@@ -204,6 +204,21 @@ class EmailSender:
             logger.error(f"Error sending payment failed notification: {str(e)}")
             return False
 
+    def send_password_reset(self, to_email: str, first_name: str, reset_link: str) -> bool:
+        """Email a link to choose a new password. The link expires after 30 minutes."""
+        if not self.enabled:
+            logger.warning("Password reset email not sent: email is not configured")
+            return False
+        subject = "Reset your Ayinde Technologies password"
+        html_content = f"""
+        <p>Hello {first_name or 'there'},</p>
+        <p>We received a request to reset your password. Click the button below to choose a new one.</p>
+        <p><a href="{reset_link}" style="display:inline-block;padding:12px 20px;background:#1e40af;color:#fff;border-radius:6px;text-decoration:none;">Reset password</a></p>
+        <p>This link expires in 30 minutes. If you did not ask for this, you can ignore this email and your password will stay the same.</p>
+        <p>Ayinde Technologies Corporation</p>
+        """
+        return self._send_email(to_email, subject, html_content)
+
     def _send_email(self, to_email: str, subject: str, html_content: str) -> bool:
         """Send one email, using Resend when configured and Gmail SMTP otherwise."""
         if self.resend_key:

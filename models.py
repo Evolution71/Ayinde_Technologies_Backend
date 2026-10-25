@@ -788,6 +788,10 @@ class ContactMessage(Base):
     email = Column(String(255), nullable=False, index=True)
     subject = Column(String(255), nullable=False)
     message = Column(Text, nullable=False)
+    phone = Column(String(50), nullable=True)
+    company = Column(String(255), nullable=True)
+    read = Column(Boolean, default=False)
+    ip_address = Column(String(64), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 # ════════════════════════════════════════════════════════════════════════════════

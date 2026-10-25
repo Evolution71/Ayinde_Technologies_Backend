@@ -17,7 +17,7 @@ from security import verify_captcha, limiter
 router = APIRouter(prefix="/api/contact", tags=["contact"])
 
 
-@router.post("/", response_model=schemas.ContactResponse)
+@router.post("/", response_model=None)
 @limiter.limit("5/minute")
 async def submit_contact_form(
     request: Request,

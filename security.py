@@ -15,6 +15,7 @@ README.md for what to turn on at the hosting/CDN level.
 
 import io
 import time
+from datetime import datetime
 import random
 import string
 import uuid
@@ -96,12 +97,30 @@ def generate_captcha():
 
 
 def verify_captcha(token: str, answer: str) -> bool:
-    _cleanup_captchas()
-    entry = _captcha_store.get(token)
-    if not entry:
+    """Check a CAPTCHA issued by GET /api/captcha/ (stored in the database).
+
+    It is used up by this call, so it works once. The widget's own verify step
+    does not use it up, so the form can still submit after that step.
+    """
+    if not token or not answer:
         return False
-    code, expires_at = entry
-    _captcha_store.pop(token, None)  # one-time use
-    if time.time() > expires_at:
+    # Imported here to avoid a circular import at start-up
+    from database import SessionLocal
+    from routers.captcha import Captcha
+    db = SessionLocal()
+    try:
+        row = db.query(Captcha).filter(Captcha.captcha_id == token.strip()).first()
+        if row is None:
+            return False
+        expires_at = row.expires_at
+        code = (row.text or "").upper()
+        db.delete(row)
+        db.commit()
+        if datetime.utcnow() > expires_at:
+            return False
+        return answer.strip().upper() == code
+    except Exception:
+        db.rollback()
         return False
-    return answer.strip().upper() == code
+    finally:
+        db.close()

@@ -156,9 +156,7 @@ async def verify_captcha(request: CaptchaVerifyRequest, db: Session = Depends(ge
         correct_answer = captcha.text.upper()
         
         if user_answer == correct_answer:
-            # Success — delete from DB
-            db.delete(captcha)
-            db.commit()
+            # Correct answer: keep it until the form submits it (security.verify_captcha uses it up)
             logger.info(f"[Captcha] Verified successfully: {captcha_id}")
             return {
                 "success": True,
